@@ -4,6 +4,12 @@ Extract function call relationships from clangd index YAML and create Neo4j know
 
 This script parses a clangd index YAML file and infers function call relationships
 by analyzing symbol references within function definition boundaries.
+
+Key improvements:
+1. Includes recursive function calls (self-references)
+2. Filters out declaration/definition references (not actual calls)
+3. Uses spatial containment to determine if a reference is a call within a function
+4. Handles edge cases like function signature references
 """
 
 import yaml
@@ -116,6 +122,14 @@ class ClangdCallGraphExtractor:
         """Check if a call location is within a function's definition boundaries."""
         if call_loc.file_uri != func_def.file_uri:
             return False
+    
+    def _locations_match(self, loc1: Location, loc2: Location) -> bool:
+        """Check if two locations refer to the same position in the same file."""
+        return (loc1.file_uri == loc2.file_uri and
+                loc1.start_line == loc2.start_line and
+                loc1.start_column == loc2.start_column and
+                loc1.end_line == loc2.end_line and
+                loc1.end_column == loc2.end_column)
         
         # Simple line-based containment check
         # A more sophisticated approach would consider column positions for same-line cases
@@ -134,9 +148,9 @@ class ClangdCallGraphExtractor:
         """Extract function call relationships from the parsed data."""
         call_relations = []
         
-        # For each function that can be called (has references)
+        # For each function symbol that has references
         for called_function_id, called_symbol in self.symbols.items():
-            if not called_symbol.references:
+            if not called_symbol.references or not called_symbol.is_function():
                 continue
             
             # Check each reference to see if it's within a function definition
@@ -147,16 +161,38 @@ class ClangdCallGraphExtractor:
                         continue
                     
                     if self._is_location_within_function(call_location, caller_symbol.definition):
-                        # Avoid self-references (function referring to itself in declaration)
-                        if caller_function_id != called_function_id:
-                            call_relations.append(CallRelation(
-                                caller_function=caller_symbol.name,
-                                called_function=called_symbol.name,
-                                call_location=call_location
-                            ))
-                            break
+                        # Filter out declaration/definition references (not actual calls)
+                        if self._is_declaration_reference(called_symbol, call_location):
+                            continue
+                        
+                        # Include recursive calls but exclude function signature references
+                        call_relations.append(CallRelation(
+                            caller_function=caller_symbol.name,
+                            called_function=called_symbol.name,
+                            call_location=call_location
+                        ))
+                        break
         
         return call_relations
+    
+    def _is_declaration_reference(self, symbol: Symbol, location: Location) -> bool:
+        """Check if a reference location is actually a declaration/definition, not a call."""
+        # Check against function's own declaration
+        if symbol.declaration and self._locations_match(location, symbol.declaration):
+            return True
+        
+        # Check against function's own definition
+        if symbol.definition and self._locations_match(location, symbol.definition):
+            return True
+        
+        # Additional heuristic: if the reference is on the same line as the definition
+        # but starts before the function body, it's likely part of the function signature
+        if symbol.definition and location.file_uri == symbol.definition.file_uri:
+            if (location.start_line == symbol.definition.start_line and 
+                location.start_column <= symbol.definition.start_column):
+                return True
+        
+        return False
     
     def generate_neo4j_cypher(self, call_relations: List[CallRelation]) -> str:
         """Generate Cypher statements for Neo4j."""
@@ -205,20 +241,25 @@ class ClangdCallGraphExtractor:
         functions = set()
         callers = set()
         called = set()
+        recursive_calls = 0
         
         for relation in call_relations:
             functions.add(relation.caller_function)
             functions.add(relation.called_function)
             callers.add(relation.caller_function)
             called.add(relation.called_function)
+            
+            if relation.caller_function == relation.called_function:
+                recursive_calls += 1
         
         stats = f"""
 Call Graph Statistics:
 =====================
-Total functions: {len(functions)}
+Total unique functions: {len(functions)}
 Functions that call others: {len(callers)}
 Functions that are called: {len(called)}
 Total call relationships: {len(call_relations)}
+Recursive calls: {recursive_calls}
 Functions that only call (leaf callers): {len(callers - called)}
 Functions that are only called (entry points): {len(called - callers)}
 """
