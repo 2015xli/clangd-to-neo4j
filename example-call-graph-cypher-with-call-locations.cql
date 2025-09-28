@@ -1,4 +1,3 @@
-// Create function nodes;
 MERGE (f_MonthlyReportInputProcess:Function {name: 'MonthlyReportInputProcess'});
 MERGE (f_MonthlyReportInterface:Function {name: 'MonthlyReportInterface'});
 MERGE (f_MultipleDayReportInputProcess:Function {name: 'MultipleDayReportInputProcess'});
@@ -189,8 +188,6 @@ MERGE (f_transactionDatabase:Function {name: 'transactionDatabase'});
 MERGE (f_transactionFileRead:Function {name: 'transactionFileRead'});
 MERGE (f_transactionFileWrite:Function {name: 'transactionFileWrite'});
 MERGE (f_transactionInsert:Function {name: 'transactionInsert'});
-
-// Create call relationships;
 MATCH (f_authInterface:Function {name: 'authInterface'}), (f_screenClear:Function {name: 'screenClear'}) CREATE (f_authInterface)-[:CALLS {start_line: 3, start_column: 4, end_line: 3, end_column: 15, file_uri: 'file:///home/xli/Public/temp/ComPro_Project/authenticate.c'}]->(f_screenClear);
 MATCH (f_authInterface:Function {name: 'authInterface'}), (f_screenClear:Function {name: 'screenClear'}) CREATE (f_authInterface)-[:CALLS {start_line: 26, start_column: 4, end_line: 26, end_column: 15, file_uri: 'file:///home/xli/Public/temp/ComPro_Project/authenticate.c'}]->(f_screenClear);
 MATCH (f_authInterfaceComplete:Function {name: 'authInterfaceComplete'}), (f_screenClear:Function {name: 'screenClear'}) CREATE (f_authInterfaceComplete)-[:CALLS {start_line: 59, start_column: 4, end_line: 59, end_column: 15, file_uri: 'file:///home/xli/Public/temp/ComPro_Project/authenticate.c'}]->(f_screenClear);

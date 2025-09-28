@@ -296,8 +296,9 @@ class ClangdCallGraphExtractor:
     
     def generate_neo4j_cypher(self, call_relations: List[CallRelation]) -> str:
         """Generate Cypher statements for Neo4j."""
-        cypher_statements = []
-        
+        #cypher_statements = []
+        cypher_statements = set()
+
         # Create unique function nodes
         functions = set()
         for relation in call_relations:
@@ -308,32 +309,34 @@ class ClangdCallGraphExtractor:
             return "// No function calls found to create graph"
         
         # Create function nodes
-        cypher_statements.append("// Create function nodes")
+        #cypher_statements.append("// Create function nodes")
         for func in sorted(functions):
-            cypher_statements.append(
+            cypher_statements.add(
                 f"MERGE (f_{self._sanitize_name(func)}:Function {{name: '{func}'}})"
             )
         
-        cypher_statements.append("\n// Create call relationships")
+        #cypher_statements.append("\n// Create call relationships")
         
         # Create call relationships
         for relation in call_relations:
             caller_var = f"f_{self._sanitize_name(relation.caller_function)}"
             callee_var = f"f_{self._sanitize_name(relation.callee_function)}"
             
-            cypher_statements.append(
+            cypher_statements.add(
                 f"MATCH ({caller_var}:Function {{name: '{relation.caller_function}'}}), "
                 f"({callee_var}:Function {{name: '{relation.callee_function}'}}) "
-                f"CREATE ({caller_var})-[:CALLS {{"
-                f"start_line: {relation.call_location.start_line}, "
-                f"start_column: {relation.call_location.start_column}, "
-                f"end_line: {relation.call_location.end_line}, "
-                f"end_column: {relation.call_location.end_column}, "
-                f"file_uri: '{relation.call_location.file_uri}'"
-                f"}}]->({callee_var})"
+                f"CREATE ({caller_var})-[:CALLS"
+                #f"{{
+                #f"start_line: {relation.call_location.start_line}, "
+                #f"start_column: {relation.call_location.start_column}, "
+                #f"end_line: {relation.call_location.end_line}, "
+                #f"end_column: {relation.call_location.end_column}, "
+                #f"file_uri: '{relation.call_location.file_uri}'"
+                #f"}}"
+                f"]->({callee_var})"
             )
         
-        return ";\n".join(cypher_statements)
+        return ";\n".join(reversed(sorted(cypher_statements)))
     
     def _sanitize_name(self, name: str) -> str:
         """Sanitize function name for use as Cypher variable."""
