@@ -5,7 +5,50 @@ import argparse
 import tree_sitter_c as tsc
 from tree_sitter import Language, Parser
 import yaml
+"""
+Extract function spans from C source/header files using tree-sitter.
+Output: YAML string or Python list of function spans
+--- !Span
+Name: foo
+Kind: Function
+NameLocation:
+  FileURI: file:///home/user/demo.c
+  Start:
+    Line: 1
+    Column: 19
+  End:
+    Line: 1
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/user/demo.c
+  Start:
+    Line: 1
+    Column: 26
+  End:
+    Line: 3
+    Column: 1
 
+--- !Span
+Name: bar
+Kind: Function
+NameLocation:
+  FileURI: file:///home/user/demo.c
+  Start:
+    Line: 5
+    Column: 6
+  End:
+    Line: 5
+    Column: 9
+BodyLocation:
+  FileURI: file:///home/user/demo.c
+  Start:
+    Line: 5
+    Column: 14
+  End:
+    Line: 7
+    Column: 1
+
+"""
 
 class SpanExtractor:
     def __init__(self):
@@ -46,8 +89,8 @@ class SpanExtractor:
                 functions.append({
                     "Name": name,
                     "Kind": "Function",
-                    "FileURI": file_uri,
                     "NameLocation": {
+                        "FileURI": file_uri,
                         "Start": {
                             "Line": ident.start_point[0],
                             "Column": ident.start_point[1]
@@ -58,6 +101,7 @@ class SpanExtractor:
                         }
                     },
                     "BodyLocation": {
+                        "FileURI": file_uri,
                         "Start": {
                             "Line": body.start_point[0],
                             "Column": body.start_point[1]
@@ -104,25 +148,90 @@ class SpanExtractor:
         else:
             raise ValueError("format must be 'yaml' or 'dict'")
 
+    # ---- New helpers ----
 
+    def get_function_spans_from_files(self, file_list, format="yaml"):
+        """Extract spans from multiple source files."""
+        all_docs = []
+        for file_path in file_list:
+            if not os.path.isfile(file_path):
+                continue
+            res = self.get_function_spans(file_path, format=format)
+            if format == "dict":
+                all_docs.extend(res)
+            else:  # yaml string
+                all_docs.append(res)
+        if format == "dict":
+            return all_docs
+        else:
+            return "\n".join(all_docs)
+
+    def get_function_spans_from_folder(self, folder, format="yaml"):
+        """Recursively extract spans from a folder of .c/.h files."""
+        file_list = []
+        for root, _, files in os.walk(folder):
+            for f in files:
+                if f.endswith((".c", ".h")):
+                    file_list.append(os.path.join(root, f))
+        return self.get_function_spans_from_files(file_list, format=format)
+
+
+# ---- CLI entry ----
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract function spans from C source/header files"
     )
-    parser.add_argument("file", help="Path to .c or .h file")
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        help="One or more source files or folders"
+    )
     parser.add_argument(
         "--format",
         choices=["yaml", "dict"],
         default="yaml",
-        help="Output format (default: yaml)",
+        help="Output format (default: yaml)"
+    )
+    parser.add_argument(
+        "--output",
+        help="Output file path (default: stdout)"
     )
     args = parser.parse_args()
 
     extractor = SpanExtractor()
-    result = extractor.get_function_spans(args.file, format=args.format)
 
-    if args.format == "yaml":
-        print(result)
-    else:  # dict
-        import pprint
-        pprint.pprint(result)
+    # Collect results
+    results = []
+    if args.format == "dict":
+        all_results = []
+        for p in args.paths:
+            if os.path.isdir(p):
+                res = extractor.get_function_spans_from_folder(p, format="dict")
+            else:
+                res = extractor.get_function_spans(p, format="dict")
+            all_results.extend(res)
+        results = all_results
+    else:  # yaml
+        yaml_docs = []
+        for p in args.paths:
+            if os.path.isdir(p):
+                res = extractor.get_function_spans_from_folder(p, format="yaml")
+            else:
+                res = extractor.get_function_spans(p, format="yaml")
+            if res:
+                yaml_docs.append(res)
+        results = "\n".join(yaml_docs)
+
+    # Output
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as out:
+            if args.format == "yaml":
+                out.write(results)
+            else:
+                yaml.safe_dump(results, out, sort_keys=False)
+    else:
+        if args.format == "yaml":
+            print(results)
+        else:
+            import pprint
+            pprint.pprint(results)

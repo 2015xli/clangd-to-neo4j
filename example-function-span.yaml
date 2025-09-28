@@ -1,0 +1,3340 @@
+--- !Span
+Name: categoryEdit
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 147
+    Column: 5
+  End:
+    Line: 147
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 147
+    Column: 21
+  End:
+    Line: 251
+    Column: 1
+
+--- !Span
+Name: categoryAdd
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 89
+    Column: 5
+  End:
+    Line: 89
+    Column: 16
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 89
+    Column: 20
+  End:
+    Line: 146
+    Column: 1
+
+--- !Span
+Name: categoryDatabaseInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 65
+    Column: 5
+  End:
+    Line: 65
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 65
+    Column: 34
+  End:
+    Line: 88
+    Column: 1
+
+--- !Span
+Name: displayCategory
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 44
+    Column: 5
+  End:
+    Line: 44
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 44
+    Column: 32
+  End:
+    Line: 64
+    Column: 1
+
+--- !Span
+Name: categoryUpdateName
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 31
+    Column: 4
+  End:
+    Line: 31
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 31
+    Column: 53
+  End:
+    Line: 42
+    Column: 1
+
+--- !Span
+Name: categoryInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 17
+    Column: 4
+  End:
+    Line: 17
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 17
+    Column: 32
+  End:
+    Line: 29
+    Column: 1
+
+--- !Span
+Name: categorySelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 3
+    Column: 4
+  End:
+    Line: 3
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+  Start:
+    Line: 3
+    Column: 53
+  End:
+    Line: 15
+    Column: 1
+
+--- !Span
+Name: promotionDelete
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 505
+    Column: 4
+  End:
+    Line: 505
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 505
+    Column: 31
+  End:
+    Line: 520
+    Column: 1
+
+--- !Span
+Name: promotionUpdateStatus
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 492
+    Column: 4
+  End:
+    Line: 492
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 492
+    Column: 49
+  End:
+    Line: 503
+    Column: 1
+
+--- !Span
+Name: promotionUpdatePrice
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 479
+    Column: 4
+  End:
+    Line: 479
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 479
+    Column: 50
+  End:
+    Line: 490
+    Column: 1
+
+--- !Span
+Name: promotionInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 464
+    Column: 4
+  End:
+    Line: 464
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 464
+    Column: 45
+  End:
+    Line: 477
+    Column: 1
+
+--- !Span
+Name: promotionSelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 450
+    Column: 4
+  End:
+    Line: 450
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 450
+    Column: 63
+  End:
+    Line: 462
+    Column: 1
+
+--- !Span
+Name: promotionUpdateInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 350
+    Column: 5
+  End:
+    Line: 350
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 350
+    Column: 33
+  End:
+    Line: 448
+    Column: 1
+
+--- !Span
+Name: promotionDeleteInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 245
+    Column: 5
+  End:
+    Line: 245
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 245
+    Column: 33
+  End:
+    Line: 348
+    Column: 1
+
+--- !Span
+Name: promotionSelectInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 220
+    Column: 5
+  End:
+    Line: 220
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 220
+    Column: 33
+  End:
+    Line: 243
+    Column: 1
+
+--- !Span
+Name: displayPromotion
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 180
+    Column: 5
+  End:
+    Line: 180
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 180
+    Column: 33
+  End:
+    Line: 218
+    Column: 1
+
+--- !Span
+Name: promotionInsertInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 54
+    Column: 5
+  End:
+    Line: 54
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 54
+    Column: 33
+  End:
+    Line: 178
+    Column: 1
+
+--- !Span
+Name: promotionSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 3
+    Column: 5
+  End:
+    Line: 3
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+  Start:
+    Line: 3
+    Column: 27
+  End:
+    Line: 52
+    Column: 1
+
+--- !Span
+Name: purchaseInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/purchase.c
+  Start:
+    Line: 23
+    Column: 5
+  End:
+    Line: 23
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/purchase.c
+  Start:
+    Line: 23
+    Column: 119
+  End:
+    Line: 34
+    Column: 1
+
+--- !Span
+Name: purchaseSelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/purchase.c
+  Start:
+    Line: 4
+    Column: 0
+  End:
+    Line: 4
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/purchase.c
+  Start:
+    Line: 5
+    Column: 58
+  End:
+    Line: 21
+    Column: 1
+
+--- !Span
+Name: displayNextMonthForecasting
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 786
+    Column: 5
+  End:
+    Line: 786
+    Column: 32
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 786
+    Column: 36
+  End:
+    Line: 824
+    Column: 1
+
+--- !Span
+Name: ShowNextMonthForecasting
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 768
+    Column: 5
+  End:
+    Line: 768
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 768
+    Column: 33
+  End:
+    Line: 784
+    Column: 1
+
+--- !Span
+Name: ShowTomorrowForecasting
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 736
+    Column: 5
+  End:
+    Line: 736
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 736
+    Column: 32
+  End:
+    Line: 766
+    Column: 1
+
+--- !Span
+Name: displayTomorrowForecasting
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 674
+    Column: 5
+  End:
+    Line: 674
+    Column: 31
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 674
+    Column: 43
+  End:
+    Line: 734
+    Column: 1
+
+--- !Span
+Name: forecastSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 613
+    Column: 5
+  End:
+    Line: 613
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 613
+    Column: 26
+  End:
+    Line: 671
+    Column: 1
+
+--- !Span
+Name: MultipleDayReportInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 584
+    Column: 5
+  End:
+    Line: 584
+    Column: 31
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 584
+    Column: 35
+  End:
+    Line: 608
+    Column: 1
+
+--- !Span
+Name: displayMultipleDayReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 556
+    Column: 5
+  End:
+    Line: 556
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 556
+    Column: 41
+  End:
+    Line: 582
+    Column: 1
+
+--- !Span
+Name: MultipleDayReportInputProcess
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 528
+    Column: 5
+  End:
+    Line: 528
+    Column: 34
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 528
+    Column: 38
+  End:
+    Line: 554
+    Column: 1
+
+--- !Span
+Name: PersonnelSaleReportInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 500
+    Column: 5
+  End:
+    Line: 500
+    Column: 33
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 500
+    Column: 37
+  End:
+    Line: 525
+    Column: 1
+
+--- !Span
+Name: displayPersonnelSaleReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 472
+    Column: 5
+  End:
+    Line: 472
+    Column: 31
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 472
+    Column: 43
+  End:
+    Line: 498
+    Column: 1
+
+--- !Span
+Name: PersonnelSaleReportInputProcess
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 450
+    Column: 5
+  End:
+    Line: 450
+    Column: 36
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 450
+    Column: 40
+  End:
+    Line: 470
+    Column: 1
+
+--- !Span
+Name: MonthlyReportInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 431
+    Column: 5
+  End:
+    Line: 431
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 431
+    Column: 31
+  End:
+    Line: 447
+    Column: 1
+
+--- !Span
+Name: displayMonthlyReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 416
+    Column: 5
+  End:
+    Line: 416
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 416
+    Column: 29
+  End:
+    Line: 429
+    Column: 1
+
+--- !Span
+Name: MonthlyReportInputProcess
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 394
+    Column: 5
+  End:
+    Line: 394
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 394
+    Column: 34
+  End:
+    Line: 414
+    Column: 1
+
+--- !Span
+Name: OneDayReportInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 367
+    Column: 5
+  End:
+    Line: 367
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 367
+    Column: 30
+  End:
+    Line: 391
+    Column: 1
+
+--- !Span
+Name: displayOneDayReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 344
+    Column: 5
+  End:
+    Line: 344
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 344
+    Column: 36
+  End:
+    Line: 365
+    Column: 1
+
+--- !Span
+Name: OneDayReportInputProcess
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 317
+    Column: 5
+  End:
+    Line: 317
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 317
+    Column: 33
+  End:
+    Line: 342
+    Column: 1
+
+--- !Span
+Name: reportSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 262
+    Column: 5
+  End:
+    Line: 262
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 262
+    Column: 24
+  End:
+    Line: 315
+    Column: 1
+
+--- !Span
+Name: personnelSaleReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 237
+    Column: 5
+  End:
+    Line: 237
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 237
+    Column: 45
+  End:
+    Line: 259
+    Column: 1
+
+--- !Span
+Name: nextMonthSaleForecast
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 184
+    Column: 5
+  End:
+    Line: 184
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 184
+    Column: 30
+  End:
+    Line: 235
+    Column: 1
+
+--- !Span
+Name: tomorrowSaleForecast
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 121
+    Column: 5
+  End:
+    Line: 121
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 121
+    Column: 29
+  End:
+    Line: 182
+    Column: 1
+
+--- !Span
+Name: monthlyReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 94
+    Column: 5
+  End:
+    Line: 94
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 94
+    Column: 39
+  End:
+    Line: 118
+    Column: 1
+
+--- !Span
+Name: nextnMonthReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 71
+    Column: 5
+  End:
+    Line: 71
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 71
+    Column: 78
+  End:
+    Line: 91
+    Column: 1
+
+--- !Span
+Name: nextnDayReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 50
+    Column: 5
+  End:
+    Line: 50
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 50
+    Column: 74
+  End:
+    Line: 69
+    Column: 1
+
+--- !Span
+Name: multipleDayReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 29
+    Column: 5
+  End:
+    Line: 29
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 29
+    Column: 104
+  End:
+    Line: 48
+    Column: 1
+
+--- !Span
+Name: oneDayReport
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 8
+    Column: 5
+  End:
+    Line: 8
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+  Start:
+    Line: 8
+    Column: 50
+  End:
+    Line: 27
+    Column: 1
+
+--- !Span
+Name: customerDelete
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 606
+    Column: 4
+  End:
+    Line: 606
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 606
+    Column: 30
+  End:
+    Line: 621
+    Column: 1
+
+--- !Span
+Name: customerUpdatetotalBuy
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 593
+    Column: 4
+  End:
+    Line: 593
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 593
+    Column: 55
+  End:
+    Line: 604
+    Column: 1
+
+--- !Span
+Name: customerUpdatePoint
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 580
+    Column: 4
+  End:
+    Line: 580
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 580
+    Column: 49
+  End:
+    Line: 591
+    Column: 1
+
+--- !Span
+Name: customerUpdateGender
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 567
+    Column: 4
+  End:
+    Line: 567
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 567
+    Column: 49
+  End:
+    Line: 578
+    Column: 1
+
+--- !Span
+Name: customerUpdateLastname
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 554
+    Column: 4
+  End:
+    Line: 554
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 554
+    Column: 54
+  End:
+    Line: 565
+    Column: 1
+
+--- !Span
+Name: customerUpdateFirstname
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 541
+    Column: 4
+  End:
+    Line: 541
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 541
+    Column: 56
+  End:
+    Line: 552
+    Column: 1
+
+--- !Span
+Name: customerInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 523
+    Column: 4
+  End:
+    Line: 523
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 523
+    Column: 76
+  End:
+    Line: 539
+    Column: 1
+
+--- !Span
+Name: customerSelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 506
+    Column: 4
+  End:
+    Line: 506
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 506
+    Column: 114
+  End:
+    Line: 521
+    Column: 1
+
+--- !Span
+Name: customerUpdateInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 398
+    Column: 5
+  End:
+    Line: 398
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 398
+    Column: 32
+  End:
+    Line: 504
+    Column: 1
+
+--- !Span
+Name: customerDeleteInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 294
+    Column: 5
+  End:
+    Line: 294
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 294
+    Column: 32
+  End:
+    Line: 396
+    Column: 1
+
+--- !Span
+Name: customerSelectInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 269
+    Column: 5
+  End:
+    Line: 269
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 269
+    Column: 32
+  End:
+    Line: 292
+    Column: 1
+
+--- !Span
+Name: displayCustomer
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 230
+    Column: 5
+  End:
+    Line: 230
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 230
+    Column: 32
+  End:
+    Line: 267
+    Column: 1
+
+--- !Span
+Name: customerInsertInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 51
+    Column: 5
+  End:
+    Line: 51
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 51
+    Column: 32
+  End:
+    Line: 228
+    Column: 1
+
+--- !Span
+Name: customerSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 5
+    Column: 5
+  End:
+    Line: 5
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+  Start:
+    Line: 5
+    Column: 26
+  End:
+    Line: 49
+    Column: 1
+
+--- !Span
+Name: delay
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 184
+    Column: 5
+  End:
+    Line: 184
+    Column: 10
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 184
+    Column: 26
+  End:
+    Line: 189
+    Column: 1
+
+--- !Span
+Name: bannerFullBorderSection
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 180
+    Column: 5
+  End:
+    Line: 180
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 180
+    Column: 32
+  End:
+    Line: 182
+    Column: 1
+
+--- !Span
+Name: bannerUserInput
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 176
+    Column: 5
+  End:
+    Line: 176
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 176
+    Column: 24
+  End:
+    Line: 178
+    Column: 1
+
+--- !Span
+Name: bannerBlankBorder
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 172
+    Column: 5
+  End:
+    Line: 172
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 172
+    Column: 26
+  End:
+    Line: 174
+    Column: 1
+
+--- !Span
+Name: bannerBlankBorderTextLeft
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 168
+    Column: 5
+  End:
+    Line: 168
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 168
+    Column: 44
+  End:
+    Line: 170
+    Column: 1
+
+--- !Span
+Name: bannerBlankBorderText
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 164
+    Column: 5
+  End:
+    Line: 164
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 164
+    Column: 40
+  End:
+    Line: 166
+    Column: 1
+
+--- !Span
+Name: bannerBlankBorderTextCen
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 157
+    Column: 5
+  End:
+    Line: 157
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 157
+    Column: 43
+  End:
+    Line: 162
+    Column: 1
+
+--- !Span
+Name: bannerFullBorder
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 151
+    Column: 5
+  End:
+    Line: 151
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 151
+    Column: 25
+  End:
+    Line: 155
+    Column: 1
+
+--- !Span
+Name: bannerCenStrikethrough
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 141
+    Column: 5
+  End:
+    Line: 141
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 141
+    Column: 105
+  End:
+    Line: 149
+    Column: 1
+
+--- !Span
+Name: bannerCenBorder
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 131
+    Column: 5
+  End:
+    Line: 131
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 131
+    Column: 98
+  End:
+    Line: 139
+    Column: 1
+
+--- !Span
+Name: bannerCen
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 121
+    Column: 5
+  End:
+    Line: 121
+    Column: 14
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 121
+    Column: 18
+  End:
+    Line: 129
+    Column: 1
+
+--- !Span
+Name: bannerInverse
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 111
+    Column: 5
+  End:
+    Line: 111
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 111
+    Column: 96
+  End:
+    Line: 119
+    Column: 1
+
+--- !Span
+Name: banner
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 101
+    Column: 5
+  End:
+    Line: 101
+    Column: 11
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 101
+    Column: 89
+  End:
+    Line: 109
+    Column: 1
+
+--- !Span
+Name: screenClear
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 95
+    Column: 5
+  End:
+    Line: 95
+    Column: 16
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 95
+    Column: 20
+  End:
+    Line: 99
+    Column: 1
+
+--- !Span
+Name: terminate
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 53
+    Column: 5
+  End:
+    Line: 53
+    Column: 14
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 53
+    Column: 18
+  End:
+    Line: 92
+    Column: 1
+
+--- !Span
+Name: screenAdjust
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 3
+    Column: 5
+  End:
+    Line: 3
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
+  Start:
+    Line: 3
+    Column: 21
+  End:
+    Line: 51
+    Column: 1
+
+--- !Span
+Name: max
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 134
+    Column: 7
+  End:
+    Line: 134
+    Column: 10
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 134
+    Column: 32
+  End:
+    Line: 138
+    Column: 1
+
+--- !Span
+Name: min
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 128
+    Column: 7
+  End:
+    Line: 128
+    Column: 10
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 128
+    Column: 32
+  End:
+    Line: 132
+    Column: 1
+
+--- !Span
+Name: superscanf
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 106
+    Column: 4
+  End:
+    Line: 106
+    Column: 14
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 106
+    Column: 29
+  End:
+    Line: 126
+    Column: 1
+
+--- !Span
+Name: isTimeInRange
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 98
+    Column: 4
+  End:
+    Line: 98
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 98
+    Column: 63
+  End:
+    Line: 104
+    Column: 1
+
+--- !Span
+Name: getProperTimeStartInMonth
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 80
+    Column: 4
+  End:
+    Line: 80
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 80
+    Column: 62
+  End:
+    Line: 96
+    Column: 1
+
+--- !Span
+Name: getProperTimeRollingInDay
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 62
+    Column: 4
+  End:
+    Line: 62
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 62
+    Column: 78
+  End:
+    Line: 78
+    Column: 1
+
+--- !Span
+Name: nMonthRollbackToDateMonthYear
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 49
+    Column: 7
+  End:
+    Line: 49
+    Column: 36
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 49
+    Column: 89
+  End:
+    Line: 60
+    Column: 1
+
+--- !Span
+Name: nDayRollbackToDateMonthYear
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 36
+    Column: 7
+  End:
+    Line: 36
+    Column: 34
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 36
+    Column: 85
+  End:
+    Line: 47
+    Column: 1
+
+--- !Span
+Name: toDateMonthYear
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 28
+    Column: 5
+  End:
+    Line: 28
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 28
+    Column: 74
+  End:
+    Line: 34
+    Column: 1
+
+--- !Span
+Name: toEpochTime
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 15
+    Column: 7
+  End:
+    Line: 15
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 15
+    Column: 85
+  End:
+    Line: 26
+    Column: 1
+
+--- !Span
+Name: isFileExist
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 7
+    Column: 4
+  End:
+    Line: 7
+    Column: 15
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+  Start:
+    Line: 7
+    Column: 39
+  End:
+    Line: 13
+    Column: 1
+
+
+--- !Span
+Name: inventoryRemove
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 712
+    Column: 5
+  End:
+    Line: 712
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 712
+    Column: 24
+  End:
+    Line: 770
+    Column: 1
+
+--- !Span
+Name: inventoryEdit
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 551
+    Column: 5
+  End:
+    Line: 551
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 551
+    Column: 22
+  End:
+    Line: 710
+    Column: 1
+
+--- !Span
+Name: inventoryAdd
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 261
+    Column: 5
+  End:
+    Line: 261
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 261
+    Column: 21
+  End:
+    Line: 549
+    Column: 1
+
+--- !Span
+Name: displaySomething
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 250
+    Column: 5
+  End:
+    Line: 250
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 250
+    Column: 25
+  End:
+    Line: 259
+    Column: 1
+
+--- !Span
+Name: inventoryDatabaseInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 223
+    Column: 5
+  End:
+    Line: 223
+    Column: 31
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 223
+    Column: 35
+  End:
+    Line: 246
+    Column: 1
+
+--- !Span
+Name: displayInventory
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 193
+    Column: 5
+  End:
+    Line: 193
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 193
+    Column: 33
+  End:
+    Line: 221
+    Column: 1
+
+--- !Span
+Name: inventoryDelete
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 176
+    Column: 4
+  End:
+    Line: 176
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 176
+    Column: 31
+  End:
+    Line: 191
+    Column: 1
+
+--- !Span
+Name: inventoryUpdateRemain
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 163
+    Column: 4
+  End:
+    Line: 163
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 163
+    Column: 58
+  End:
+    Line: 174
+    Column: 1
+
+--- !Span
+Name: inventoryUpdateCategory
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 150
+    Column: 4
+  End:
+    Line: 150
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 150
+    Column: 64
+  End:
+    Line: 161
+    Column: 1
+
+--- !Span
+Name: inventoryUpdateProfit
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 137
+    Column: 4
+  End:
+    Line: 137
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 137
+    Column: 52
+  End:
+    Line: 148
+    Column: 1
+
+--- !Span
+Name: inventoryUpdatePrice
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 124
+    Column: 4
+  End:
+    Line: 124
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 124
+    Column: 50
+  End:
+    Line: 135
+    Column: 1
+
+--- !Span
+Name: inventoryUpdateName
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 111
+    Column: 4
+  End:
+    Line: 111
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 111
+    Column: 47
+  End:
+    Line: 122
+    Column: 1
+
+--- !Span
+Name: inventoryInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 91
+    Column: 4
+  End:
+    Line: 91
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 91
+    Column: 118
+  End:
+    Line: 109
+    Column: 1
+
+--- !Span
+Name: inventorySelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 72
+    Column: 4
+  End:
+    Line: 72
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 73
+    Column: 47
+  End:
+    Line: 88
+    Column: 1
+
+--- !Span
+Name: inventorySwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 3
+    Column: 5
+  End:
+    Line: 3
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
+  Start:
+    Line: 3
+    Column: 27
+  End:
+    Line: 70
+    Column: 1
+
+--- !Span
+Name: transactionInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/transaction.c
+  Start:
+    Line: 21
+    Column: 5
+  End:
+    Line: 21
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/transaction.c
+  Start:
+    Line: 21
+    Column: 68
+  End:
+    Line: 34
+    Column: 1
+
+--- !Span
+Name: transactionSelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/transaction.c
+  Start:
+    Line: 3
+    Column: 4
+  End:
+    Line: 3
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/transaction.c
+  Start:
+    Line: 4
+    Column: 81
+  End:
+    Line: 19
+    Column: 1
+
+--- !Span
+Name: personnelDelete
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 702
+    Column: 4
+  End:
+    Line: 702
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 702
+    Column: 31
+  End:
+    Line: 717
+    Column: 1
+
+--- !Span
+Name: personnelUpdatePassword
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 689
+    Column: 4
+  End:
+    Line: 689
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 689
+    Column: 55
+  End:
+    Line: 700
+    Column: 1
+
+--- !Span
+Name: personnelUpdateRole
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 676
+    Column: 4
+  End:
+    Line: 676
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 676
+    Column: 45
+  End:
+    Line: 687
+    Column: 1
+
+--- !Span
+Name: personnelUpdateLastname
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 663
+    Column: 4
+  End:
+    Line: 663
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 663
+    Column: 55
+  End:
+    Line: 674
+    Column: 1
+
+--- !Span
+Name: personnelUpdateFirstname
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 650
+    Column: 4
+  End:
+    Line: 650
+    Column: 28
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 650
+    Column: 57
+  End:
+    Line: 661
+    Column: 1
+
+--- !Span
+Name: personnelInsert
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 629
+    Column: 4
+  End:
+    Line: 629
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 630
+    Column: 41
+  End:
+    Line: 648
+    Column: 1
+
+--- !Span
+Name: personnelSelectById
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 610
+    Column: 4
+  End:
+    Line: 610
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 611
+    Column: 45
+  End:
+    Line: 627
+    Column: 1
+
+--- !Span
+Name: personnelUpdateInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 497
+    Column: 5
+  End:
+    Line: 497
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 497
+    Column: 33
+  End:
+    Line: 608
+    Column: 1
+
+--- !Span
+Name: personnelDeleteInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 394
+    Column: 5
+  End:
+    Line: 394
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 394
+    Column: 33
+  End:
+    Line: 495
+    Column: 1
+
+--- !Span
+Name: personnelSelectInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 369
+    Column: 5
+  End:
+    Line: 369
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 369
+    Column: 33
+  End:
+    Line: 392
+    Column: 1
+
+--- !Span
+Name: displayPersonnel
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 325
+    Column: 5
+  End:
+    Line: 325
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 325
+    Column: 33
+  End:
+    Line: 367
+    Column: 1
+
+--- !Span
+Name: personnelInsertInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 51
+    Column: 5
+  End:
+    Line: 51
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 51
+    Column: 33
+  End:
+    Line: 323
+    Column: 1
+
+--- !Span
+Name: personnelSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 3
+    Column: 5
+  End:
+    Line: 3
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
+  Start:
+    Line: 3
+    Column: 27
+  End:
+    Line: 49
+    Column: 1
+
+--- !Span
+Name: cashierInterfaceResult
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 279
+    Column: 5
+  End:
+    Line: 279
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 279
+    Column: 43
+  End:
+    Line: 411
+    Column: 1
+
+--- !Span
+Name: cashierInterfaceDiscount
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 183
+    Column: 5
+  End:
+    Line: 183
+    Column: 29
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 183
+    Column: 46
+  End:
+    Line: 277
+    Column: 1
+
+--- !Span
+Name: cashierInterfaceInventory
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 76
+    Column: 5
+  End:
+    Line: 76
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 76
+    Column: 45
+  End:
+    Line: 181
+    Column: 1
+
+--- !Span
+Name: cashierInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 15
+    Column: 5
+  End:
+    Line: 15
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
+  Start:
+    Line: 15
+    Column: 47
+  End:
+    Line: 74
+    Column: 1
+
+--- !Span
+Name: switchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/main.c
+  Start:
+    Line: 11
+    Column: 5
+  End:
+    Line: 11
+    Column: 14
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/main.c
+  Start:
+    Line: 11
+    Column: 18
+  End:
+    Line: 147
+    Column: 1
+
+--- !Span
+Name: main
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/main.c
+  Start:
+    Line: 4
+    Column: 4
+  End:
+    Line: 4
+    Column: 8
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/main.c
+  Start:
+    Line: 4
+    Column: 12
+  End:
+    Line: 9
+    Column: 1
+
+--- !Span
+Name: settingFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 284
+    Column: 5
+  End:
+    Line: 284
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 284
+    Column: 25
+  End:
+    Line: 291
+    Column: 1
+
+--- !Span
+Name: promotionFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 273
+    Column: 5
+  End:
+    Line: 273
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 273
+    Column: 27
+  End:
+    Line: 282
+    Column: 1
+
+--- !Span
+Name: customerFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 260
+    Column: 5
+  End:
+    Line: 260
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 260
+    Column: 26
+  End:
+    Line: 271
+    Column: 1
+
+--- !Span
+Name: purchaseFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 247
+    Column: 5
+  End:
+    Line: 247
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 247
+    Column: 26
+  End:
+    Line: 258
+    Column: 1
+
+--- !Span
+Name: transactionFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 234
+    Column: 5
+  End:
+    Line: 234
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 234
+    Column: 29
+  End:
+    Line: 245
+    Column: 1
+
+--- !Span
+Name: categoryFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 223
+    Column: 5
+  End:
+    Line: 223
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 223
+    Column: 26
+  End:
+    Line: 232
+    Column: 1
+
+--- !Span
+Name: inventoryFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 211
+    Column: 5
+  End:
+    Line: 211
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 211
+    Column: 27
+  End:
+    Line: 221
+    Column: 1
+
+--- !Span
+Name: personnelFileWrite
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 199
+    Column: 5
+  End:
+    Line: 199
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 199
+    Column: 27
+  End:
+    Line: 209
+    Column: 1
+
+--- !Span
+Name: settingFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 190
+    Column: 5
+  End:
+    Line: 190
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 190
+    Column: 24
+  End:
+    Line: 197
+    Column: 1
+
+--- !Span
+Name: promotionFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 178
+    Column: 5
+  End:
+    Line: 178
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 178
+    Column: 26
+  End:
+    Line: 188
+    Column: 1
+
+--- !Span
+Name: customerFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 165
+    Column: 5
+  End:
+    Line: 165
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 165
+    Column: 25
+  End:
+    Line: 176
+    Column: 1
+
+--- !Span
+Name: purchaseFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 147
+    Column: 5
+  End:
+    Line: 147
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 147
+    Column: 25
+  End:
+    Line: 163
+    Column: 1
+
+--- !Span
+Name: transactionFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 132
+    Column: 5
+  End:
+    Line: 132
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 132
+    Column: 28
+  End:
+    Line: 145
+    Column: 1
+
+--- !Span
+Name: categoryFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 120
+    Column: 5
+  End:
+    Line: 120
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 120
+    Column: 25
+  End:
+    Line: 130
+    Column: 1
+
+--- !Span
+Name: inventoryFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 105
+    Column: 5
+  End:
+    Line: 105
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 105
+    Column: 26
+  End:
+    Line: 118
+    Column: 1
+
+--- !Span
+Name: personnelFileRead
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 91
+    Column: 5
+  End:
+    Line: 91
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 91
+    Column: 26
+  End:
+    Line: 103
+    Column: 1
+
+--- !Span
+Name: settingDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 84
+    Column: 5
+  End:
+    Line: 84
+    Column: 20
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 84
+    Column: 24
+  End:
+    Line: 89
+    Column: 1
+
+--- !Span
+Name: promotionDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 77
+    Column: 5
+  End:
+    Line: 77
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 77
+    Column: 26
+  End:
+    Line: 82
+    Column: 1
+
+--- !Span
+Name: customerDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 70
+    Column: 5
+  End:
+    Line: 70
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 70
+    Column: 25
+  End:
+    Line: 75
+    Column: 1
+
+--- !Span
+Name: purchaseDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 63
+    Column: 5
+  End:
+    Line: 63
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 63
+    Column: 25
+  End:
+    Line: 68
+    Column: 1
+
+--- !Span
+Name: transactionDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 56
+    Column: 5
+  End:
+    Line: 56
+    Column: 24
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 56
+    Column: 28
+  End:
+    Line: 61
+    Column: 1
+
+--- !Span
+Name: categoryDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 49
+    Column: 5
+  End:
+    Line: 49
+    Column: 21
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 49
+    Column: 25
+  End:
+    Line: 54
+    Column: 1
+
+--- !Span
+Name: inventoryDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 42
+    Column: 5
+  End:
+    Line: 42
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 42
+    Column: 26
+  End:
+    Line: 47
+    Column: 1
+
+--- !Span
+Name: personnelDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 35
+    Column: 5
+  End:
+    Line: 35
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 35
+    Column: 26
+  End:
+    Line: 40
+    Column: 1
+
+--- !Span
+Name: initDatabase
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 13
+    Column: 5
+  End:
+    Line: 13
+    Column: 17
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+  Start:
+    Line: 13
+    Column: 21
+  End:
+    Line: 33
+    Column: 1
+
+--- !Span
+Name: settingUpdatePointToPrice
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 756
+    Column: 5
+  End:
+    Line: 756
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 756
+    Column: 53
+  End:
+    Line: 759
+    Column: 1
+
+--- !Span
+Name: settingUpdatePriceToPoint
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 751
+    Column: 5
+  End:
+    Line: 751
+    Column: 30
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 751
+    Column: 53
+  End:
+    Line: 754
+    Column: 1
+
+--- !Span
+Name: settingPointToPriceInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 609
+    Column: 5
+  End:
+    Line: 609
+    Column: 33
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 609
+    Column: 37
+  End:
+    Line: 749
+    Column: 1
+
+--- !Span
+Name: settingPriceToPointInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 466
+    Column: 5
+  End:
+    Line: 466
+    Column: 33
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 466
+    Column: 37
+  End:
+    Line: 607
+    Column: 1
+
+--- !Span
+Name: settingUpdateAddress
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 461
+    Column: 5
+  End:
+    Line: 461
+    Column: 25
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 461
+    Column: 47
+  End:
+    Line: 464
+    Column: 1
+
+--- !Span
+Name: settingUpdateStoreName
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 456
+    Column: 5
+  End:
+    Line: 456
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 456
+    Column: 46
+  End:
+    Line: 459
+    Column: 1
+
+--- !Span
+Name: settingCat
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 410
+    Column: 5
+  End:
+    Line: 410
+    Column: 15
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 410
+    Column: 19
+  End:
+    Line: 454
+    Column: 1
+
+--- !Span
+Name: settingContributorList
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 380
+    Column: 5
+  End:
+    Line: 380
+    Column: 27
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 380
+    Column: 31
+  End:
+    Line: 408
+    Column: 1
+
+--- !Span
+Name: settingUpdateStoreAddressInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 335
+    Column: 5
+  End:
+    Line: 335
+    Column: 39
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 335
+    Column: 43
+  End:
+    Line: 378
+    Column: 1
+
+--- !Span
+Name: settingUpdateStoreNameInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 290
+    Column: 5
+  End:
+    Line: 290
+    Column: 36
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 290
+    Column: 40
+  End:
+    Line: 333
+    Column: 1
+
+--- !Span
+Name: settingUpdatePasswordInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 176
+    Column: 5
+  End:
+    Line: 176
+    Column: 35
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 176
+    Column: 39
+  End:
+    Line: 288
+    Column: 1
+
+--- !Span
+Name: settingsSwitchHub
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 3
+    Column: 5
+  End:
+    Line: 3
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+  Start:
+    Line: 3
+    Column: 26
+  End:
+    Line: 174
+    Column: 1
+
+--- !Span
+Name: deauthenticate
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 223
+    Column: 5
+  End:
+    Line: 223
+    Column: 19
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 223
+    Column: 23
+  End:
+    Line: 244
+    Column: 1
+
+--- !Span
+Name: authenticateByToken
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 208
+    Column: 4
+  End:
+    Line: 208
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 208
+    Column: 45
+  End:
+    Line: 221
+    Column: 1
+
+--- !Span
+Name: authenticateByUsername
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 190
+    Column: 4
+  End:
+    Line: 190
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 190
+    Column: 60
+  End:
+    Line: 206
+    Column: 1
+
+--- !Span
+Name: authInterfaceError
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 173
+    Column: 5
+  End:
+    Line: 173
+    Column: 23
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 173
+    Column: 27
+  End:
+    Line: 188
+    Column: 1
+
+--- !Span
+Name: authInterfaceFail
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 138
+    Column: 5
+  End:
+    Line: 138
+    Column: 22
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 138
+    Column: 26
+  End:
+    Line: 171
+    Column: 1
+
+--- !Span
+Name: authInterfaceComplete
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 58
+    Column: 5
+  End:
+    Line: 58
+    Column: 26
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 58
+    Column: 30
+  End:
+    Line: 136
+    Column: 1
+
+--- !Span
+Name: authInterface
+Kind: Function
+NameLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 2
+    Column: 5
+  End:
+    Line: 2
+    Column: 18
+BodyLocation:
+  FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+  Start:
+    Line: 2
+    Column: 22
+  End:
+    Line: 56
+    Column: 1
