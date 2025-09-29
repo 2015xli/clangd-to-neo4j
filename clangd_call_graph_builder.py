@@ -105,18 +105,19 @@ class ClangdCallGraphExtractor:
         """Parse the clangd index YAML content."""
         documents = list(yaml.safe_load_all(yaml_content))
         
+        # First pass: collect all symbols
         for doc in documents:
-            if doc is None:
-                continue
-                
-            if 'ID' in doc and 'SymInfo' in doc:
-                # This is a symbol
+            if doc and 'ID' in doc and 'SymInfo' in doc:
                 symbol = self._parse_symbol(doc)
                 self.symbols[symbol.id] = symbol
                 if symbol.is_function():
                     self.functions[symbol.id] = symbol
-            elif 'ID' in doc and 'References' in doc:
-                # This is a references entry
+
+        # Second pass: collect all references
+        for doc in documents:
+            # A !References block is identified by having an ID and a References list,
+            # but no SymInfo.
+            if doc and 'ID' in doc and 'References' in doc and 'SymInfo' not in doc:
                 self._parse_references(doc)
     
     def parse_function_spans(self, spans_yaml: str) -> None:
