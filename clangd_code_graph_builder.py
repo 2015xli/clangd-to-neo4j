@@ -26,6 +26,8 @@ def main():
     parser = argparse.ArgumentParser(description='Build a code graph from a clangd index.')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project being indexed')
+    parser.add_argument('--keep-orphans', action='store_true',
+                      help='Keep orphan nodes in the graph (skip cleanup)')
     args = parser.parse_args()
 
     # --- Pre-Pass: Sanitize the large YAML file --- 
@@ -117,6 +119,15 @@ def main():
             else:
                 print("No call relationships found to ingest.")
             print("--- Finished Pass 3 ---")
+
+            # --- Pass 4: Cleanup Orphan Nodes (Optional) ---
+            if not args.keep_orphans:
+                print("\n--- Starting Pass 4: Cleaning up Orphan Nodes ---")
+                deleted_nodes_count = neo4j_mgr.cleanup_orphan_nodes()
+                print(f"Removed {deleted_nodes_count} orphan nodes.")
+                print("--- Finished Pass 4 ---")
+            else:
+                print("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
 
         print("\n✅ All passes complete. Code graph ingestion finished.")
         return 0

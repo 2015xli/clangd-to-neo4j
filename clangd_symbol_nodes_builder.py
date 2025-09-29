@@ -198,6 +198,13 @@ class Neo4jManager:
                         print(f"Error: {e}")
                         raise
 
+    def cleanup_orphan_nodes(self) -> int:
+        """Removes all nodes that have no relationships (orphan nodes)."""
+        query = "MATCH (n) WHERE size((n)--()) = 0 DETACH DELETE n"
+        with self.driver.session() as session:
+            result = session.run(query)
+            return result.consume().nodes_deleted
+
 # -------------------------
 # Symbol processing
 # -------------------------
