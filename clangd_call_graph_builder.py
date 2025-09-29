@@ -96,29 +96,38 @@ class CallRelation:
     call_location: Location
 
 class ClangdCallGraphExtractor:
-    def __init__(self):
+    def __init__(self, log_batch_size: int = 1000):
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
         self.function_spans: List[FunctionSpan] = []
+        self.log_batch_size = log_batch_size
         
-    def parse_yaml(self, yaml_stream) -> None:
-        """Parse the clangd index YAML content from a stream."""
-        documents = list(yaml.safe_load_all(yaml_stream))
+    def parse_yaml(self, index_file: str) -> None:
+        """Parse the clangd index YAML content from a file."""
+        documents = list(load_yaml_stream(index_file))
         
         # First pass: collect all symbols
+        total_documents_parsed = 0
         for doc in documents:
             if doc and 'ID' in doc and 'SymInfo' in doc:
                 symbol = self._parse_symbol(doc)
                 self.symbols[symbol.id] = symbol
                 if symbol.is_function():
                     self.functions[symbol.id] = symbol
+            total_documents_parsed += 1
+            if total_documents_parsed % self.log_batch_size == 0:
+                logger.info(f"Parsed {total_documents_parsed} YAML documents for symbols...")
 
         # Second pass: collect all references
+        total_documents_parsed = 0
         for doc in documents:
             # A !References block is identified by having an ID and a References list,
             # but no SymInfo.
             if doc and 'ID' in doc and 'References' in doc and 'SymInfo' not in doc:
                 self._parse_references(doc)
+            total_documents_parsed += 1
+            if total_documents_parsed % self.log_batch_size == 0:
+                logger.info(f"Parsed {total_documents_parsed} YAML documents for references...")
     
     def parse_function_spans(self, spans_yaml: str) -> None:
         """Parse function spans from tree-sitter output."""
@@ -254,6 +263,7 @@ class ClangdCallGraphExtractor:
         logger.info(f"Analyzing calls for {len(functions_with_bodies)} functions with body spans")
         
         # For each function symbol that has references
+        callees_processed = 0
         for callee_function_id, callee_symbol in self.symbols.items():
             if not callee_symbol.references or not callee_symbol.is_function():
                 continue
@@ -283,6 +293,9 @@ class ClangdCallGraphExtractor:
                             call_location=call_location
                         ))
                         break
+            callees_processed += 1
+            if callees_processed % self.log_batch_size == 0:
+                logger.info(f"Processed call relationships for {callees_processed} callees...")
         
         logger.info(f"Extracted {len(call_relations)} call relationships")
         return call_relations
@@ -369,7 +382,7 @@ def main():
     parser.add_argument('spans_file', help='Pre-computed spans YAML file')
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
-    
+    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     args = parser.parse_args()
     
     # Read input file
@@ -377,8 +390,8 @@ def main():
         yaml_content = f.read()
     
     # Extract call relationships
-    extractor = ClangdCallGraphExtractor()
-    extractor.parse_yaml(yaml_content)
+    extractor = ClangdCallGraphExtractor(args.log_batch_size)
+    extractor.parse_yaml(args.input_file)
     
     # Load function spans
     if args.spans_file:
@@ -406,13 +419,13 @@ def main():
     if args.output:
         with open(args.output, 'w') as f:
             json.dump(output_data, f, indent=2)
-        print(f"Cypher query and parameters written to {args.output}")
+        logger.info(f"Cypher query and parameters written to {args.output}")
     else:
-        print(json.dumps(output_data, indent=2))
+        logger.info(json.dumps(output_data, indent=2))
     
     # Show statistics if requested
     if args.stats:
-        print(extractor.generate_statistics(call_relations))
+        logger.info(extractor.generate_statistics(call_relations))
 
 if __name__ == "__main__":
     main()

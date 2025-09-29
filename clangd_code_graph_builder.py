@@ -12,7 +12,8 @@ This script orchestrates the different processors to build a complete code graph
 import argparse
 import sys
 import yaml
-
+import logging
+import os
 import tempfile
 
 # Import processors from the library scripts
@@ -23,29 +24,33 @@ from clangd_call_graph_builder import ClangdCallGraphExtractor, FunctionSpan
 BATCH_SIZE = 500
 
 def main():
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
     parser = argparse.ArgumentParser(description='Build a code graph from a clangd index.')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project being indexed')
+    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     args = parser.parse_args()
 
     # --- Pre-Pass: Sanitize the large YAML file --- 
-    print(f"Sanitizing input file: {args.index_file}")
+    logger.info(f"Sanitizing input file: {args.index_file}")
     try:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', errors='ignore') as temp_f:
             with open(args.index_file, 'r', errors='ignore') as f_in:
                 for line in f_in:
                     temp_f.write(line.replace('\t', '  '))
             clean_yaml_path = temp_f.name
-        print(f"Sanitized YAML written to temporary file: {clean_yaml_path}")
+        logger.info(f"Sanitized YAML written to temporary file: {clean_yaml_path}")
 
         # --- Main Processing --- 
         path_manager = PathManager(args.project_path)
         
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection():
-                print("Failed to connect to Neo4j. Exiting.", file=sys.stderr)
+                logger.error("Failed to connect to Neo4j. Exiting.")
                 return 1
 
             # Reset database and create constraints
@@ -54,13 +59,13 @@ def main():
             neo4j_mgr.create_constraints()
 
             # --- Pass 1: Ingest File & Folder Structure ---
-            print("--- Starting Pass 1: Ingesting File & Folder Structure ---")
-            path_processor = PathProcessor(path_manager, neo4j_mgr)
+            logger.info("--- Starting Pass 1: Ingesting File & Folder Structure ---")
+            path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size)
             path_processor.ingest_paths(clean_yaml_path)
-            print("--- Finished Pass 1 ---")
+            logger.info("--- Finished Pass 1 ---")
 
             # --- Pass 2: Ingest Symbol Definitions ---
-            print("\n--- Starting Pass 2: Ingesting Symbol Definitions ---")
+            logger.info("\n--- Starting Pass 2: Ingesting Symbol Definitions ---")
             symbol_processor = SymbolProcessor(path_manager)
             batch, count, total_symbols = [], 0, 0
 
@@ -69,8 +74,8 @@ def main():
                     if not sym:
                         continue
                     total_symbols += 1
-                    if total_symbols % 500 == 0:
-                        print(f"Processed {total_symbols} symbols...")
+                    if total_symbols % args.log_batch_size == 0:
+                        logger.info(f"Processed {total_symbols} symbols...")
                     
                     ops = symbol_processor.process_symbol(sym)
                     batch.extend(ops)
@@ -78,28 +83,28 @@ def main():
                     if len(batch) >= BATCH_SIZE:
                         neo4j_mgr.process_batch(batch)
                         count += len(batch)
-                        print(f"Committed {count} symbol operations...")
+                        logger.info(f"Committed {count} symbol operations...")
                         batch = []
             
             if batch:
                 neo4j_mgr.process_batch(batch)
                 count += len(batch)
             
-            print(f"Completed symbol ingestion. Total operations: {count}")
-            print("--- Finished Pass 2 ---")
+            logger.info(f"Completed symbol ingestion. Total operations: {count}")
+            logger.info("--- Finished Pass 2 ---")
 
             # --- Pass 3: Ingest Call Graph ---
-            print("\n--- Starting Pass 3: Ingesting Call Graph ---")
-            call_graph_extractor = ClangdCallGraphExtractor()
+            logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
+            call_graph_extractor = ClangdCallGraphExtractor(args.log_batch_size)
 
             # 1. Extract function spans from source code
-            print("Extracting function spans with tree-sitter...")
-            span_extractor = SpanExtractor()
+            logger.info("Extracting function spans with tree-sitter...")
+            span_extractor = SpanExtractor(args.log_batch_size)
             function_span_dicts = span_extractor.get_function_spans_from_folder(args.project_path, format="dict")
-            print(f"Found {len(function_span_dicts)} function definitions.")
+            logger.info(f"Found {len(function_span_dicts)} function definitions.")
 
             # 2. Parse clangd index and match spans
-            print("Parsing clangd index for call graph...")
+            logger.info("Parsing clangd index for call graph...")
             with open(clean_yaml_path, 'r') as f:
                 call_graph_extractor.parse_yaml(f)
             
@@ -112,30 +117,30 @@ def main():
             query, params = call_graph_extractor.get_call_relation_ingest_query(call_relations)
             
             if query:
-                print(f"Ingesting {len(call_relations)} call relationships with a single query...")
+                logger.info(f"Ingesting {len(call_relations)} call relationships with a single query...")
                 with neo4j_mgr.driver.session() as session:
                     session.run(query, **params)
-                print("Call graph ingestion complete.")
+                logger.info("Call graph ingestion complete.")
             else:
-                print("No call relationships found to ingest.")
-            print("--- Finished Pass 3 ---")
+                logger.info("No call relationships found to ingest.")
+            logger.info("--- Finished Pass 3 ---")
 
             # --- Pass 4: Cleanup Orphan Nodes (Optional) ---
             if not args.keep_orphans:
-                print("\n--- Starting Pass 4: Cleaning up Orphan Nodes ---")
+                logger.info("\n--- Starting Pass 4: Cleaning up Orphan Nodes ---")
                 deleted_nodes_count = neo4j_mgr.cleanup_orphan_nodes()
-                print(f"Removed {deleted_nodes_count} orphan nodes.")
-                print("--- Finished Pass 4 ---")
+                logger.info(f"Removed {deleted_nodes_count} orphan nodes.")
+                logger.info("--- Finished Pass 4 ---")
             else:
-                print("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
+                logger.info("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
 
-        print("\n✅ All passes complete. Code graph ingestion finished.")
+        logger.info("\n✅ All passes complete. Code graph ingestion finished.")
         return 0
 
     finally:
         # --- Cleanup --- 
         if 'clean_yaml_path' in locals() and os.path.exists(clean_yaml_path):
-            print(f"Cleaning up temporary file: {clean_yaml_path}")
+            logger.info(f"Cleaning up temporary file: {clean_yaml_path}")
             os.remove(clean_yaml_path)
 
 if __name__ == "__main__":

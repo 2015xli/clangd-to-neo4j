@@ -5,6 +5,9 @@ import argparse
 import tree_sitter_c as tsc
 from tree_sitter import Language, Parser
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 """
 Extract function spans from C source/header files using tree-sitter.
 Output: YAML string or Python list of function spans
@@ -51,10 +54,11 @@ BodyLocation:
 """
 
 class SpanExtractor:
-    def __init__(self):
+    def __init__(self, log_batch_size: int = 1000):
         # Initialize tree-sitter C parser
         self.language = Language(tsc.language())
         self.parser = Parser(self.language)
+        self.log_batch_size = log_batch_size
 
     def _find_identifier(self, node):
         """Recursively find the identifier node inside a declarator subtree."""
@@ -166,14 +170,32 @@ class SpanExtractor:
         else:
             return "\n".join(all_docs)
 
-    def get_function_spans_from_folder(self, folder, format="yaml"):
-        """Recursively extract spans from a folder of .c/.h files."""
+    def get_function_spans_from_folder(self, folder, format="dict"):
+        """Extract spans from multiple source files."""
         file_list = []
         for root, _, files in os.walk(folder):
             for f in files:
                 if f.endswith((".c", ".h")):
                     file_list.append(os.path.join(root, f))
-        return self.get_function_spans_from_files(file_list, format=format)
+        
+        all_docs = []
+        processed_files = 0
+        for file_path in file_list:
+            if not os.path.isfile(file_path):
+                continue
+            res = self.get_function_spans(file_path, format=format)
+            if format == "dict":
+                all_docs.extend(res)
+            else:  # yaml string
+                all_docs.append(res)
+            processed_files += 1
+            if processed_files % self.log_batch_size == 0:
+                logger.info(f"Processed {processed_files} source files for spans...")
+        logger.info(f"Finished processing {processed_files} source files for spans.")
+        if format == "dict":
+            return all_docs
+        else:
+            return "\n".join(all_docs)
 
 
 # ---- CLI entry ----
@@ -198,7 +220,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    extractor = SpanExtractor()
+    extractor = SpanExtractor(args.log_batch_size)
 
     # Collect results
     results = []

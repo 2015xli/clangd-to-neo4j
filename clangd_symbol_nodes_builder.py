@@ -11,6 +11,9 @@ from pathlib import Path
 from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Tuple, Optional
 from neo4j import GraphDatabase
+import logging
+
+logger = logging.getLogger(__name__)
 
 # -------------------------
 # Constants
@@ -122,28 +125,24 @@ class Neo4jManager:
             self.driver.close()
     
     def check_connection(self) -> bool:
-        """Check if the Neo4j connection is working.
-        
-        Returns:
-            True if connection is successful, False otherwise
-        """
+        """Check if the Neo4j connection is working."""
         try:
             self.driver.verify_connectivity()
-            print("✅ Connection established!")
+            logger.info("✅ Connection established!")
             with self.driver.session() as session:
                 result = session.run("RETURN 1 AS result").single()
-                print("Test query result:", result["result"])
+                logger.info(f"Test query result: {result["result"]}")
             return True
         except Exception as e:
-            print("❌ Connection failed:", e)
+            logger.error(f"❌ Connection failed: {e}")
             return False
         
     def reset_database(self) -> None:
         """Clear all data from the Neo4j database."""
         with self.driver.session() as session:
-            print("Deleting existing data...")
+            logger.info("Deleting existing data...")
             session.run("MATCH (n) DETACH DELETE n")
-            print("Database cleared.")
+            logger.info("Database cleared.")
     
     def create_constraints(self) -> None:
         """Create necessary constraints in Neo4j."""
@@ -160,15 +159,11 @@ class Neo4jManager:
                 try:
                     session.run(constraint)
                 except Exception as e:
-                    print(f"Error creating constraint: {e}")
+                    logger.error(f"Error creating constraint: {e}")
                     raise
     
     def create_project_node(self, project_path: str) -> None:
-        """Create a project node in Neo4j.
-        
-        Args:
-            project_path: Path to the project root
-        """
+        """Create a project node in Neo4j."""
         with self.driver.session() as session:
             session.run(
                 """
@@ -182,20 +177,16 @@ class Neo4jManager:
             )
     
     def process_batch(self, batch: List[Tuple[str, Dict]]) -> None:
-        """Process a batch of Cypher operations in a single transaction.
-        
-        Args:
-            batch: List of (cypher_query, params) tuples
-        """
+        """Process a batch of Cypher operations in a single transaction."""
         with self.driver.session() as session:
             with session.begin_transaction() as tx:
                 for cypher, params in batch:
                     try:
                         tx.run(cypher, **params)
                     except Exception as e:
-                        print(f"Error executing: {cypher}")
-                        print(f"Params: {params}")
-                        print(f"Error: {e}")
+                        logger.error(f"Error executing: {cypher}")
+                        logger.error(f"Params: {params}")
+                        logger.error(f"Error: {e}")
                         raise
 
     def cleanup_orphan_nodes(self) -> int:
@@ -386,9 +377,10 @@ def process_batch(session, batch):
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
 
-    def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager):
+    def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
         self.path_manager = path_manager
         self.neo4j_mgr = neo4j_mgr
+        self.log_batch_size = log_batch_size
 
     def _discover_paths(self, index_file: str) -> Tuple[set, set]:
         """First pass: discover all unique in-project files and folders."""
@@ -396,10 +388,13 @@ class PathProcessor:
         project_folders = set()
 
         print("Pass 1: Discovering project file structure...")
-        with open(index_file, "r", errors='ignore') as f:
-            for sym in yaml.safe_load_all(f):
-                if not sym:
-                    continue
+        total_symbols_processed = 0
+        for sym in load_yaml_stream(index_file):
+            if not sym:
+                continue
+            total_symbols_processed += 1
+            if total_symbols_processed % self.log_batch_size == 0:
+                logger.info(f"Discovered paths from {total_symbols_processed} symbols...")
 
                 locations = []
                 if "Definition" in sym:
@@ -469,7 +464,7 @@ class PathProcessor:
                     }
                 ))
         if batch:
-            print("Creating folder structure...")
+            logger.info("Creating folder structure...")
             self.neo4j_mgr.process_batch(batch)
             batch = []
 
@@ -505,7 +500,7 @@ class PathProcessor:
                     }
                 ))
         if batch:
-            print("Creating file nodes...")
+            logger.info("Creating file nodes...")
             self.neo4j_mgr.process_batch(batch)
             batch = []
 
