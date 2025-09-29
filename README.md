@@ -46,7 +46,7 @@ python clangd_code_graph_builder.py <path-to-your-index.yaml> <path-to-your-proj
 
 **Example:**
 ```bash
-python clangd_code_graph_builder.py example-clangd-index.yaml "/home/xli/Public/temp/ComPro_Project/"
+python clangd_code_graph_builder.py example-clangd-index.yaml "/home/xli/Project"
 ```
 
 ## 5. Graph Schema
