@@ -233,10 +233,10 @@ class SymbolProcessor:
             ops.extend(self._process_function(sym))
         elif kind in ("Struct", "Class", "Union", "Enum"):
             ops.extend(self._process_data_structure(sym))
-        elif kind == "Field":
-            ops.extend(self._process_field(sym))
-        elif kind == "Variable":
-            ops.extend(self._process_variable(sym))
+        #elif kind == "Field":
+        #    ops.extend(self._process_field(sym))
+        #elif kind == "Variable":
+        #    ops.extend(self._process_variable(sym))
 
         # Process file and folder relationships
         ops.extend(self._process_file_relationships(sym, sid, kind))
@@ -249,7 +249,6 @@ class SymbolProcessor:
         props = {
             "id": sid,
             "name": sym["Name"],
-            "type": sym.get("Type", ""),
             "scope": sym.get("Scope", ""),
             "language": sym.get("SymInfo", {}).get("Lang", ""),
         }
@@ -262,156 +261,99 @@ class SymbolProcessor:
     def _process_function(self, sym: Dict) -> List[Tuple[str, Dict]]:
         """Process a function symbol."""
         ops = self._process_node(sym, "FUNCTION")
-        ops[0][1]["props"]["signature"] = sym.get("Signature", "")
-        ops[0][1]["props"]["return_type"] = sym.get("ReturnType", "")
-        ops[0][1]["props"]["has_definition"] = "Definition" in sym
+        props = ops[0][1]["props"]
+
+        props["signature"] = sym.get("Signature", "")
+        props["return_type"] = sym.get("ReturnType", "")
+        props["type"] = sym.get("Type", "")
+        props["has_definition"] = "Definition" in sym
+
+        # Determine the primary location (Definition > Declaration)
+        primary_location = None
+        if "Definition" in sym:
+            primary_location = sym["Definition"]
+        elif "CanonicalDeclaration" in sym:
+            primary_location = sym["CanonicalDeclaration"]
+
+        if primary_location and "FileURI" in primary_location:
+            file_uri = primary_location["FileURI"]
+            
+            parsed_uri = urlparse(file_uri)
+            if parsed_uri.scheme == 'file':
+                abs_file_path = unquote(parsed_uri.path)
+
+                # Set path to relative if in-project, otherwise absolute
+                if self.path_manager.is_within_project(abs_file_path):
+                    props["path"] = self.path_manager.uri_to_relative_path(file_uri)
+                else:
+                    props["path"] = abs_file_path
+                
+                # Add location details
+                if "Start" in primary_location:
+                    props["location"] = [
+                        primary_location["Start"]["Line"],
+                        primary_location["Start"]["Column"]
+                    ]
+
         return ops
     
     def _process_data_structure(self, sym: Dict) -> List[Tuple[str, Dict]]:
         """Process a data structure symbol (class/struct/union/enum)."""
-        sid = sym["ID"]
-        props = {
-            "id": sid,
-            "name": sym["Name"],
-            "kind": sym.get("SymInfo", {}).get("Kind", ""),
-            "has_definition": "Definition" in sym,
-            "scope": sym.get("Scope", ""),
-            "language": sym.get("SymInfo", {}).get("Lang", ""),
-        }
-        
-        return [(
-            "MERGE (n:DATA_STRUCTURE {id: $id}) SET n += $props",
-            {"id": sid, "props": props}
-        )]
+        ops = self._process_node(sym, "DATA_STRUCTURE")
+        props = ops[0][1]["props"]
+        props["kind"] = sym.get("SymInfo", {}).get("Kind", "")
+        props["has_definition"] = "Definition" in sym
+        return ops
     
     def _process_field(self, sym: Dict) -> List[Tuple[str, Dict]]:
         """Process a field/member variable symbol."""
-        sid = sym["ID"]
-        props = {
-            "id": sid,
-            "name": sym["Name"],
-            "type": sym.get("Type", ""),
-            "scope": sym.get("Scope", ""),
-            "language": sym.get("SymInfo", {}).get("Lang", ""),
-        }
-        
-        return [(
-            "MERGE (n:FIELD {id: $id}) SET n += $props",
-            {"id": sid, "props": props}
-        )]
+        ops = self._process_node(sym, "FIELD")
+        ops[0][1]["props"]["type"] = sym.get("Type", "")
+        return ops
     
     def _process_variable(self, sym: Dict) -> List[Tuple[str, Dict]]:
         """Process a global or local variable symbol."""
-        sid = sym["ID"]
-        props = {
-            "id": sid,
-            "name": sym["Name"],
-            "type": sym.get("Type", ""),
-            "scope": sym.get("Scope", ""),
-            "language": sym.get("SymInfo", {}).get("Lang", ""),
-        }
-        
-        return [(
-            "MERGE (n:VARIABLE {id: $id}) SET n += $props",
-            {"id": sid, "props": props}
-        )]
+        ops = self._process_node(sym, "VARIABLE")
+        ops[0][1]["props"]["type"] = sym.get("Type", "")
+        return ops
     
     def _process_file_relationships(self, sym: Dict, node_id: str, node_kind: str) -> List[Tuple[str, Dict]]:
         """Process file and folder relationships for a symbol."""
         ops = []
         
-        # Handle both definition and declaration locations
-        locations = []
-        if "Definition" in sym:
-            locations.append(("Definition", sym["Definition"]))
-        if "CanonicalDeclaration" in sym:
-            locations.append(("Declaration", sym["CanonicalDeclaration"]))
-        
-        for loc_type, loc in locations:
-            if not loc or "FileURI" not in loc:
-                continue
+        # We only care about the definition location for creating a DEFINES relationship
+        if "Definition" not in sym:
+            return []
+            
+        loc = sym["Definition"]
+        if not loc or "FileURI" not in loc:
+            return []
                 
-            file_uri = loc["FileURI"]
-            file_path = self.path_manager.uri_to_relative_path(file_uri)
-            folder_path = self.path_manager.get_relative_folder_path(file_path)
-            
-            # Skip if not within project
-            if not self.path_manager.is_within_project(file_path):
-                continue
-            
-            # Create file node
+        file_uri = loc["FileURI"]
+
+        # Get absolute path and check if it's in the project
+        parsed_uri = urlparse(file_uri)
+        if parsed_uri.scheme != 'file':
+            return []
+        abs_file_path = unquote(parsed_uri.path)
+
+        if not self.path_manager.is_within_project(abs_file_path):
+            return []
+
+        # Get relative path for the relationship
+        file_path = self.path_manager.uri_to_relative_path(file_uri)
+
+        # Create file defines symbol relationship for definitions
+        if node_kind in ["Function", "Struct", "Class", "Union", "Enum"]:
+            label = "FUNCTION" if node_kind == "Function" else "DATA_STRUCTURE"
             ops.append((
-                """
-                MATCH (p:PROJECT {path: $project_path})
-                MERGE (f:FILE {path: $file_path}) 
-                SET f.name = $name
-                MERGE (p)-[:CONTAINS]->(f)
+                f"""
+                MATCH (f:FILE {{path: $file_path}})
+                MATCH (n:{label} {{id: $node_id}})
+                MERGE (f)-[:DEFINES]->(n)
                 """,
-                {
-                    "project_path": self.path_manager.project_path,
-                    "file_path": file_path,
-                    "name": Path(file_path).name
-                }
+                {"file_path": file_path, "node_id": node_id}
             ))
-            
-            # Create folder hierarchy if needed
-            if folder_path and folder_path != '.':
-                # Split path into components and create each level
-                path_components = []
-                current_path = Path(folder_path)
-                
-                # Build list of all parent folders that need to be created
-                while str(current_path) != '.':
-                    path_components.append(str(current_path))
-                    current_path = current_path.parent
-                
-                # Create folders from top to bottom
-                for path in reversed(path_components):
-                    parent_path = str(Path(path).parent) if Path(path).parent != Path('.') else None
-                    
-                    if parent_path:
-                        # Nested folder - connect to parent folder
-                        ops.append((
-                            """
-                            MERGE (child:FOLDER {path: $path})
-                            SET child.name = $name
-                            WITH child
-                            MATCH (parent:FOLDER {path: $parent_path})
-                            MERGE (parent)-[:CONTAINS]->(child)
-                            """,
-                            {
-                                "path": path,
-                                "name": Path(path).name,
-                                "parent_path": parent_path
-                            }
-                        ))
-                    else:
-                        # Top-level folder - connect to project
-                        ops.append((
-                            """
-                            MATCH (p:PROJECT {path: $project_path})
-                            MERGE (f:FOLDER {path: $path})
-                            SET f.name = $name
-                            MERGE (p)-[:CONTAINS]->(f)
-                            """,
-                            {
-                                "project_path": self.path_manager.project_path,
-                                "path": path,
-                                "name": Path(path).name
-                            }
-                        ))
-            
-            # Create file defines symbol relationship for definitions
-            if loc_type == "Definition" and node_kind in ["Function", "Struct", "Class", "Union", "Enum"]:
-                label = "FUNCTION" if node_kind == "Function" else "DATA_STRUCTURE"
-                ops.append((
-                    f"""
-                    MATCH (f:FILE {{path: $file_path}})
-                    MATCH (n:{label} {{id: $node_id}})
-                    MERGE (f)-[:DEFINES]->(n)
-                    """,
-                    {"file_path": file_path, "node_id": node_id}
-                ))
         
         return ops
 
@@ -433,6 +375,136 @@ def process_batch(session, batch):
                 raise
 
 
+class PathProcessor:
+    """Discovers and ingests file/folder structure into Neo4j."""
+
+    def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager):
+        self.path_manager = path_manager
+        self.neo4j_mgr = neo4j_mgr
+
+    def _discover_paths(self, index_file: str) -> Tuple[set, set]:
+        """First pass: discover all unique in-project files and folders."""
+        project_files = set()
+        project_folders = set()
+
+        print("Pass 1: Discovering project file structure...")
+        with open(index_file, "r") as f:
+            for sym in yaml.safe_load_all(f):
+                if not sym:
+                    continue
+
+                locations = []
+                if "Definition" in sym:
+                    locations.append(sym["Definition"])
+                if "CanonicalDeclaration" in sym:
+                    locations.append(sym["CanonicalDeclaration"])
+
+                for loc in locations:
+                    if not loc or "FileURI" not in loc:
+                        continue
+                    
+                    file_uri = loc["FileURI"]
+                    parsed_uri = urlparse(file_uri)
+                    if parsed_uri.scheme != 'file':
+                        continue
+                    
+                    abs_file_path = unquote(parsed_uri.path)
+                    if self.path_manager.is_within_project(abs_file_path):
+                        relative_path = self.path_manager.uri_to_relative_path(file_uri)
+                        project_files.add(relative_path)
+                        
+                        # Add all parent folders
+                        parent = Path(relative_path).parent
+                        while str(parent) != '.':
+                            project_folders.add(str(parent))
+                            parent = parent.parent
+        
+        print(f"Discovered {len(project_files)} files and {len(project_folders)} folders.")
+        return project_files, project_folders
+
+    def ingest_paths(self, index_file: str):
+        """Discover and create all folder and file nodes."""
+        project_files, project_folders = self._discover_paths(index_file)
+        batch = []
+
+        # A. Create Folders
+        sorted_folders = sorted(list(project_folders), key=lambda p: len(Path(p).parts))
+        for folder_path in sorted_folders:
+            parent_path = str(Path(folder_path).parent)
+            if parent_path == '.':
+                batch.append((
+                    """
+                    MATCH (p:PROJECT {path: $project_path})
+                    MERGE (f:FOLDER {path: $path})
+                    SET f.name = $name
+                    MERGE (p)-[:CONTAINS]->(f)
+                    """,
+                    {
+                        "project_path": self.path_manager.project_path,
+                        "path": folder_path,
+                        "name": Path(folder_path).name
+                    }
+                ))
+            else:
+                batch.append((
+                    """
+                    MERGE (child:FOLDER {path: $path})
+                    SET child.name = $name
+                    WITH child
+                    MATCH (parent:FOLDER {path: $parent_path})
+                    MERGE (parent)-[:CONTAINS]->(child)
+                    """,
+                    {
+                        "path": folder_path,
+                        "name": Path(folder_path).name,
+                        "parent_path": parent_path
+                    }
+                ))
+        if batch:
+            print("Creating folder structure...")
+            self.neo4j_mgr.process_batch(batch)
+            batch = []
+
+        # B. Create Files
+        for file_path in project_files:
+            parent_path = str(Path(file_path).parent)
+            if parent_path == '.':
+                batch.append((
+                    """
+                    MATCH (p:PROJECT {path: $project_path})
+                    MERGE (f:FILE {path: $path})
+                    SET f.name = $name
+                    MERGE (p)-[:CONTAINS]->(f)
+                    """,
+                    {
+                        "project_path": self.path_manager.project_path,
+                        "path": file_path,
+                        "name": Path(file_path).name
+                    }
+                ))
+            else:
+                batch.append((
+                    """
+                    MATCH (p:FOLDER {path: $parent_path})
+                    MERGE (f:FILE {path: $path})
+                    SET f.name = $name
+                    MERGE (p)-[:CONTAINS]->(f)
+                    """,
+                    {
+                        "parent_path": parent_path,
+                        "path": file_path,
+                        "name": Path(file_path).name
+                    }
+                ))
+        if batch:
+            print("Creating file nodes...")
+            self.neo4j_mgr.process_batch(batch)
+            batch = []
+
+# -------------------------
+# Main processing
+# -------------------------
+
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Import Clangd index into Neo4j')
@@ -440,64 +512,50 @@ def main():
     parser.add_argument('project_path', help='Root path of the project')
     args = parser.parse_args()
     
-    # Initialize path manager and symbol processor
     path_manager = PathManager(args.project_path)
     
-    # Initialize Neo4j manager
     with Neo4jManager() as neo4j_mgr:
-        # Check connection and reset database
         if not neo4j_mgr.check_connection():
             print("Failed to connect to Neo4j. Exiting.")
             return 1
             
+        # Setup database
         neo4j_mgr.reset_database()
-        
-        # Create project node and constraints
-        neo4j_mgr.create_project_node(args.project_path)
+        neo4j_mgr.create_project_node(path_manager.project_path)
         neo4j_mgr.create_constraints()
         
-        # Initialize symbol processor
-        symbol_processor = SymbolProcessor(path_manager)
-        
-        # Process the YAML file
-        batch, count = [], 0
-        total_symbols = 0
-        
-        print(f"Processing {args.index_file}...")
-        
-        try:
-            with open(args.index_file, "r") as f:
-                for i, sym in enumerate(yaml.safe_load_all(f)):
-                    if not sym:
-                        continue
-                        
-                    total_symbols += 1
-                    if total_symbols % 100 == 0:
-                        print(f"Processed {total_symbols} symbols...")
-                    
-                    # Process the symbol and add operations to batch
-                    ops = symbol_processor.process_symbol(sym)
-                    batch.extend(ops)
-                    
-                    # Process batch if it reaches the size limit
-                    if len(batch) >= BATCH_SIZE:
-                        neo4j_mgr.process_batch(batch)
-                        count += len(batch)
-                        print(f"Committed {count} total operations...")
-                        batch = []
-            
-            # Process any remaining operations in the batch
-            if batch:
-                neo4j_mgr.process_batch(batch)
-                count += len(batch)
-            
-            print(f"Done. Processed {total_symbols} symbols with {count} total operations.")
-            return 0
-            
-        except Exception as e:
-            print(f"Error during processing: {e}")
-            return 1
+        # Pass 1: Create file system structure
+        path_processor = PathProcessor(path_manager, neo4j_mgr)
+        path_processor.ingest_paths(args.index_file)
 
+        # Pass 2: Create symbols and relationships
+        print("Pass 2: Processing symbols and relationships...")
+        symbol_processor = SymbolProcessor(path_manager)
+        batch, count, total_symbols = [], 0, 0
+
+        with open(args.index_file, "r") as f:
+            for sym in yaml.safe_load_all(f):
+                if not sym:
+                    continue
+                total_symbols += 1
+                if total_symbols % 500 == 0:
+                    print(f"Processed {total_symbols} symbols...")
+                
+                ops = symbol_processor.process_symbol(sym)
+                batch.extend(ops)
+                
+                if len(batch) >= BATCH_SIZE:
+                    neo4j_mgr.process_batch(batch)
+                    count += len(batch)
+                    print(f"Committed {count} total operations...")
+                    batch = []
+        
+        if batch:
+            neo4j_mgr.process_batch(batch)
+            count += len(batch)
+        
+        print(f"Done. Processed {total_symbols} symbols with {count} total operations.")
+        return 0
 
 if __name__ == "__main__":
     sys.exit(main())

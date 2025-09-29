@@ -89,8 +89,10 @@ class Symbol:
 
 @dataclass
 class CallRelation:
-    caller_function: str
-    callee_function: str
+    caller_id: str
+    caller_name: str
+    callee_id: str
+    callee_name: str
     call_location: Location
 
 class ClangdCallGraphExtractor:
@@ -273,8 +275,10 @@ class ClangdCallGraphExtractor:
                         #    continue
                         
                         call_relations.append(CallRelation(
-                            caller_function=caller_symbol.name,
-                            callee_function=callee_symbol.name,
+                            caller_id=caller_symbol.id,
+                            caller_name=caller_symbol.name,
+                            callee_id=callee_symbol.id,
+                            callee_name=callee_symbol.name,
                             call_location=call_location
                         ))
                         break
@@ -296,47 +300,32 @@ class ClangdCallGraphExtractor:
     
     def generate_neo4j_cypher(self, call_relations: List[CallRelation]) -> str:
         """Generate Cypher statements for Neo4j."""
-        #cypher_statements = []
         cypher_statements = set()
+        functions = {}
 
         # Create unique function nodes
-        functions = set()
         for relation in call_relations:
-            functions.add(relation.caller_function)
-            functions.add(relation.callee_function)
+            functions[relation.caller_id] = relation.caller_name
+            functions[relation.callee_id] = relation.callee_name
         
         if not functions:
             return "// No function calls found to create graph"
         
-        # Create function nodes
-        #cypher_statements.append("// Create function nodes")
-        for func in sorted(functions):
+        # Create function nodes using their ID, and set the name
+        for func_id, func_name in functions.items():
             cypher_statements.add(
-                f"MERGE (f_{self._sanitize_name(func)}:Function {{name: '{func}'}})"
+                f"MERGE (f:FUNCTION {{id: '{func_id}'}}) SET f.name = '{func_name}'"
             )
-        
-        #cypher_statements.append("\n// Create call relationships")
         
         # Create call relationships
         for relation in call_relations:
-            caller_var = f"f_{self._sanitize_name(relation.caller_function)}"
-            callee_var = f"f_{self._sanitize_name(relation.callee_function)}"
-            
             cypher_statements.add(
-                f"MATCH ({caller_var}:Function {{name: '{relation.caller_function}'}}), "
-                f"({callee_var}:Function {{name: '{relation.callee_function}'}}) "
-                f"CREATE ({caller_var})-[:CALLS"
-                #f"{{
-                #f"start_line: {relation.call_location.start_line}, "
-                #f"start_column: {relation.call_location.start_column}, "
-                #f"end_line: {relation.call_location.end_line}, "
-                #f"end_column: {relation.call_location.end_column}, "
-                #f"file_uri: '{relation.call_location.file_uri}'"
-                #f"}}"
-                f"]->({callee_var})"
+                f"MATCH (caller:FUNCTION {{id: '{relation.caller_id}'}}), "
+                f"(callee:FUNCTION {{id: '{relation.callee_id}'}}) "
+                f"MERGE (caller)-[:CALLS]->(callee)"
             )
         
-        return ";\n".join(reversed(sorted(cypher_statements)))
+        return ";\n".join(sorted(list(cypher_statements), reverse=True))
     
     def _sanitize_name(self, name: str) -> str:
         """Sanitize function name for use as Cypher variable."""
@@ -350,12 +339,12 @@ class ClangdCallGraphExtractor:
         recursive_calls = 0
         
         for relation in call_relations:
-            functions.add(relation.caller_function)
-            functions.add(relation.callee_function)
-            callers.add(relation.caller_function)
-            callee.add(relation.callee_function)
+            functions.add(relation.caller_name)
+            functions.add(relation.callee_name)
+            callers.add(relation.caller_name)
+            callee.add(relation.callee_name)
             
-            if relation.caller_function == relation.callee_function:
+            if relation.caller_id == relation.callee_id:
                 recursive_calls += 1
         
         functions_with_bodies = len([f for f in self.functions.values() if f.body_location])
