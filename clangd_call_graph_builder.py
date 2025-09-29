@@ -299,34 +299,28 @@ class ClangdCallGraphExtractor:
         
         return False
     
-    def generate_neo4j_cypher(self, call_relations: List[CallRelation]) -> str:
-        """Generate Cypher statements for Neo4j."""
-        cypher_statements = set()
-        functions = {}
+    def get_call_relation_ingest_query(self, call_relations: List[CallRelation]) -> Tuple[str, Dict]:
+        """
+        Generates a single, parameterized Cypher query for ingesting all call relations.
+        Assumes all relevant FUNCTION nodes have already been created.
+        """
+        if not call_relations:
+            return ("", {})
 
-        # Create unique function nodes
-        for relation in call_relations:
-            functions[relation.caller_id] = relation.caller_name
-            functions[relation.callee_id] = relation.callee_name
+        query = """
+        UNWIND $relations as relation
+        MATCH (caller:FUNCTION {id: relation.caller_id})
+        MATCH (callee:FUNCTION {id: relation.callee_id})
+        MERGE (caller)-[:CALLS]->(callee)
+        """
         
-        if not functions:
-            return "// No function calls found to create graph"
+        params = {
+            "relations": [
+                {"caller_id": r.caller_id, "callee_id": r.callee_id} for r in call_relations
+            ]
+        }
         
-        # Create function nodes using their ID, and set the name
-        for func_id, func_name in functions.items():
-            cypher_statements.add(
-                f"MERGE (f:FUNCTION {{id: '{func_id}'}}) SET f.name = '{func_name}'"
-            )
-        
-        # Create call relationships
-        for relation in call_relations:
-            cypher_statements.add(
-                f"MATCH (caller:FUNCTION {{id: '{relation.caller_id}'}}), "
-                f"(callee:FUNCTION {{id: '{relation.callee_id}'}}) "
-                f"MERGE (caller)-[:CALLS]->(callee)"
-            )
-        
-        return ";\n".join(sorted(list(cypher_statements), reverse=True))
+        return (query, params)
     
     def _sanitize_name(self, name: str) -> str:
         """Sanitize function name for use as Cypher variable."""
@@ -368,11 +362,12 @@ Functions that are only called (leaf functions): {len(callee - callers)}
 def main():
     """Main function to demonstrate usage."""
     import argparse
+    import json
     
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
     parser.add_argument('input_file', help='Path to clangd index YAML file')
     parser.add_argument('spans_file', help='Pre-computed spans YAML file')
-    parser.add_argument('--output', '-o', help='Output Cypher file path')
+    parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     
     args = parser.parse_args()
@@ -389,7 +384,9 @@ def main():
     if args.spans_file:
         with open(args.spans_file, 'r') as f:
             spans_yaml = f.read()
-        extractor.parse_function_spans(spans_yaml)
+        # Manually convert dicts to FunctionSpan objects
+        span_dicts = list(yaml.safe_load_all(spans_yaml))
+        extractor.function_spans = [FunctionSpan.from_dict(d) for d in span_dicts if d]
         extractor.match_function_spans()
     else:
         logger.error("spans-file must be provided")
@@ -397,16 +394,21 @@ def main():
     
     call_relations = extractor.extract_call_relationships()
     
-    # Generate Cypher
-    cypher_code = extractor.generate_neo4j_cypher(call_relations)
+    # Get the ingest query and params
+    query, params = extractor.get_call_relation_ingest_query(call_relations)
     
     # Output
+    output_data = {
+        "query": query,
+        "params": params
+    }
+
     if args.output:
         with open(args.output, 'w') as f:
-            f.write(cypher_code)
-        print(f"Cypher code written to {args.output}")
+            json.dump(output_data, f, indent=2)
+        print(f"Cypher query and parameters written to {args.output}")
     else:
-        print(cypher_code)
+        print(json.dumps(output_data, indent=2))
     
     # Show statistics if requested
     if args.stats:
