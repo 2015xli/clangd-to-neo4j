@@ -101,9 +101,9 @@ class ClangdCallGraphExtractor:
         self.functions: Dict[str, Symbol] = {}
         self.function_spans: List[FunctionSpan] = []
         
-    def parse_yaml(self, yaml_content: str) -> None:
-        """Parse the clangd index YAML content."""
-        documents = list(yaml.safe_load_all(yaml_content))
+    def parse_yaml(self, yaml_stream) -> None:
+        """Parse the clangd index YAML content from a stream."""
+        documents = list(yaml.safe_load_all(yaml_stream))
         
         # First pass: collect all symbols
         for doc in documents:

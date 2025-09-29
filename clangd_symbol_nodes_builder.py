@@ -36,6 +36,7 @@ yaml.SafeLoader.add_multi_constructor("!", unknown_tag)
 # Helper functions
 # -------------------------
 class PathManager:
+
     """Manages file paths and their relationships within the project."""
     
     def __init__(self, project_path: str) -> None:
@@ -388,7 +389,7 @@ class PathProcessor:
         project_folders = set()
 
         print("Pass 1: Discovering project file structure...")
-        with open(index_file, "r") as f:
+        with open(index_file, "r", errors='ignore') as f:
             for sym in yaml.safe_load_all(f):
                 if not sym:
                     continue
