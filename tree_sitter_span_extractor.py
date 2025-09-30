@@ -10,47 +10,43 @@ import logging
 logger = logging.getLogger(__name__)
 """
 Extract function spans from C source/header files using tree-sitter.
-Output: YAML string or Python list of function spans
---- !Span
-Name: foo
-Kind: Function
-NameLocation:
-  FileURI: file:///home/user/demo.c
-  Start:
-    Line: 1
-    Column: 19
-  End:
-    Line: 1
-    Column: 22
-BodyLocation:
-  FileURI: file:///home/user/demo.c
-  Start:
-    Line: 1
-    Column: 26
-  End:
-    Line: 3
-    Column: 1
+Output: YAML string or Python list of function spans, grouped by file.
 
---- !Span
-Name: bar
-Kind: Function
-NameLocation:
-  FileURI: file:///home/user/demo.c
-  Start:
-    Line: 5
-    Column: 6
-  End:
-    Line: 5
-    Column: 9
-BodyLocation:
-  FileURI: file:///home/user/demo.c
-  Start:
-    Line: 5
-    Column: 14
-  End:
-    Line: 7
-    Column: 1
-
+--- !FileFunctionSpans
+FileURI: file:///home/user/demo.c
+Functions:
+  - Name: foo
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 1
+        Column: 19
+      End:
+        Line: 1
+        Column: 22
+    BodyLocation:
+      Start:
+        Line: 1
+        Column: 26
+      End:
+        Line: 3
+        Column: 1
+  - Name: bar
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 5
+        Column: 6
+      End:
+        Line: 5
+        Column: 9
+    BodyLocation:
+      Start:
+        Line: 5
+        Column: 14
+      End:
+        Line: 7
+        Column: 1
 """
 
 class SpanExtractor:
@@ -70,7 +66,7 @@ class SpanExtractor:
                 return ident
         return None
 
-    def _extract_functions(self, tree, source_lines, file_uri):
+    def _extract_functions(self, tree, source_lines):
         """Traverse the AST to extract all function definitions with spans."""
         functions = []
         stack = [tree.root_node]
@@ -94,7 +90,6 @@ class SpanExtractor:
                     "Name": name,
                     "Kind": "Function",
                     "NameLocation": {
-                        "FileURI": file_uri,
                         "Start": {
                             "Line": ident.start_point[0],
                             "Column": ident.start_point[1]
@@ -105,7 +100,6 @@ class SpanExtractor:
                         }
                     },
                     "BodyLocation": {
-                        "FileURI": file_uri,
                         "Start": {
                             "Line": body.start_point[0],
                             "Column": body.start_point[1]
@@ -130,7 +124,7 @@ class SpanExtractor:
             format (str): "yaml" (default) or "dict"
 
         Returns:
-            str | list: YAML string if format="yaml", else list of dicts
+            str | dict: YAML string if format="yaml", else a dict for the file.
         """
         file_uri = f"file://{os.path.abspath(file_path)}"
 
@@ -140,15 +134,20 @@ class SpanExtractor:
         tree = self.parser.parse(source)
         source_lines = source.decode("utf-8", errors="ignore").splitlines()
 
-        functions = self._extract_functions(tree, source_lines, file_uri)
+        functions = self._extract_functions(tree, source_lines)
+
+        if not functions:
+            return "" if format == "yaml" else {}
+
+        file_spans = {
+            "FileURI": file_uri,
+            "Functions": functions
+        }
 
         if format == "dict":
-            return functions
+            return file_spans
         elif format == "yaml":
-            docs = []
-            for fn in functions:
-                docs.append("--- !Span\n" + yaml.safe_dump(fn, sort_keys=False))
-            return "\n".join(docs)
+            return "--- !FileFunctionSpans\n" + yaml.safe_dump(file_spans, sort_keys=False)
         else:
             raise ValueError("format must be 'yaml' or 'dict'")
 
@@ -161,14 +160,15 @@ class SpanExtractor:
             if not os.path.isfile(file_path):
                 continue
             res = self.get_function_spans(file_path, format=format)
-            if format == "dict":
-                all_docs.extend(res)
-            else:  # yaml string
-                all_docs.append(res)
+            if res:
+                if format == "dict":
+                    all_docs.append(res)
+                else:  # yaml string
+                    all_docs.append(res)
         if format == "dict":
             return all_docs
         else:
-            return "\n".join(all_docs)
+            return "\n".join(filter(None, all_docs))
 
     def get_function_spans_from_folder(self, folder, format="dict"):
         """Extract spans from multiple source files."""
@@ -184,10 +184,11 @@ class SpanExtractor:
             if not os.path.isfile(file_path):
                 continue
             res = self.get_function_spans(file_path, format=format)
-            if format == "dict":
-                all_docs.extend(res)
-            else:  # yaml string
-                all_docs.append(res)
+            if res:
+                if format == "dict":
+                    all_docs.append(res)
+                else:  # yaml string
+                    all_docs.append(res)
             processed_files += 1
             if processed_files % self.log_batch_size == 0:
                 logger.info(f"Processed {processed_files} source files for spans...")
@@ -195,10 +196,9 @@ class SpanExtractor:
         if format == "dict":
             return all_docs
         else:
-            return "\n".join(all_docs)
+            return "\n".join(filter(None, all_docs))
 
 
-# ---- CLI entry ----
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Extract function spans from C source/header files"
@@ -218,10 +218,16 @@ if __name__ == "__main__":
         "--output",
         help="Output file path (default: stdout)"
     )
+    parser.add_argument(
+        '--log-batch-size',
+        type=int,
+        default=1000,
+        help='Log progress every N items (default: 1000)'
+    )
     args = parser.parse_args()
-
+ 
     extractor = SpanExtractor(args.log_batch_size)
-
+ 
     # Collect results
     results = []
     if args.format == "dict":
@@ -229,9 +235,11 @@ if __name__ == "__main__":
         for p in args.paths:
             if os.path.isdir(p):
                 res = extractor.get_function_spans_from_folder(p, format="dict")
+                all_results.extend(res)
             else:
                 res = extractor.get_function_spans(p, format="dict")
-            all_results.extend(res)
+                if res:
+                    all_results.append(res)
         results = all_results
     else:  # yaml
         yaml_docs = []
@@ -242,8 +250,8 @@ if __name__ == "__main__":
                 res = extractor.get_function_spans(p, format="yaml")
             if res:
                 yaml_docs.append(res)
-        results = "\n".join(yaml_docs)
-
+        results = "\n".join(filter(None, yaml_docs))
+ 
     # Output
     if args.output:
         with open(args.output, "w", encoding="utf-8") as out:
@@ -257,3 +265,4 @@ if __name__ == "__main__":
         else:
             import pprint
             pprint.pprint(results)
+

@@ -100,20 +100,40 @@ def main():
             # 1. Extract function spans from source code
             logger.info("Extracting function spans with tree-sitter...")
             span_extractor = SpanExtractor(args.log_batch_size)
-            function_span_dicts = span_extractor.get_function_spans_from_folder(args.project_path, format="dict")
-            logger.info(f"Found {len(function_span_dicts)} function definitions.")
+            function_span_file_dicts = span_extractor.get_function_spans_from_folder(args.project_path, format="dict")
+            
+            num_functions = sum(len(d.get('Functions', [])) for d in function_span_file_dicts)
+            logger.info(f"Found {num_functions} function definitions in {len(function_span_file_dicts)} files.")
 
             # 2. Parse clangd index and match spans
             logger.info("Parsing clangd index for call graph...")
             with open(clean_yaml_path, 'r') as f:
                 call_graph_extractor.parse_yaml(f)
             
-            # Convert dicts to FunctionSpan objects before assigning
-            call_graph_extractor.function_spans = [FunctionSpan.from_dict(d) for d in function_span_dicts]
+            # Manually build the function_spans_by_file dictionary from the new format
+            spans_by_file = {}
+            for file_dict in function_span_file_dicts:
+                file_uri = file_dict.get('FileURI')
+                if not file_uri or 'Functions' not in file_dict:
+                    continue
+                
+                # Create FunctionSpan objects which now use RelativeLocation
+                spans_in_file = [FunctionSpan.from_dict(func_data) for func_data in file_dict['Functions'] if func_data]
+                if spans_in_file:
+                    spans_by_file[file_uri] = spans_in_file
+            
+            call_graph_extractor.function_spans_by_file = spans_by_file
+            del function_span_file_dicts # Free memory
             call_graph_extractor.match_function_spans()
 
             # 3. Extract and ingest call relationships
             call_relations = call_graph_extractor.extract_call_relationships()
+            
+            # Free memory from large intermediate objects
+            del call_graph_extractor.symbols
+            del call_graph_extractor.functions
+            del call_graph_extractor.function_spans_by_file
+
             query, params = call_graph_extractor.get_call_relation_ingest_query(call_relations)
             
             if query:
@@ -123,6 +143,8 @@ def main():
                 logger.info("Call graph ingestion complete.")
             else:
                 logger.info("No call relationships found to ingest.")
+            
+            del call_relations # Free memory
             logger.info("--- Finished Pass 3 ---")
 
             # --- Pass 4: Cleanup Orphan Nodes (Optional) ---

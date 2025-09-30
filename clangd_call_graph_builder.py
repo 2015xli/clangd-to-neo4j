@@ -49,6 +49,22 @@ class Location:
         )
 
 @dataclass
+class RelativeLocation:
+    start_line: int
+    start_column: int
+    end_line: int
+    end_column: int
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'RelativeLocation':
+        return cls(
+            start_line=data['Start']['Line'],
+            start_column=data['Start']['Column'],
+            end_line=data['End']['Line'],
+            end_column=data['End']['Column']
+        )
+
+@dataclass
 class Reference:
     kind: int
     location: Location
@@ -63,15 +79,15 @@ class Reference:
 @dataclass
 class FunctionSpan:
     name: str
-    name_location: Location
-    body_location: Location
+    name_location: RelativeLocation
+    body_location: RelativeLocation
     
     @classmethod
     def from_dict(cls, data: dict) -> 'FunctionSpan':
         return cls(
             name=data['Name'],
-            name_location=Location.from_dict(data['NameLocation']),
-            body_location=Location.from_dict(data['BodyLocation'])
+            name_location=RelativeLocation.from_dict(data['NameLocation']),
+            body_location=RelativeLocation.from_dict(data['BodyLocation'])
         )
 
 @dataclass
@@ -82,7 +98,7 @@ class Symbol:
     declaration: Optional[Location]
     definition: Optional[Location]
     references: List[Reference]
-    body_location: Optional[Location] = None  # Added for function body span
+    body_location: Optional[RelativeLocation] = None  # Added for function body span
     
     def is_function(self) -> bool:
         return self.kind == 'Function'
@@ -99,12 +115,12 @@ class ClangdCallGraphExtractor:
     def __init__(self, log_batch_size: int = 1000):
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
-        self.function_spans: List[FunctionSpan] = []
+        self.function_spans_by_file: Dict[str, List[FunctionSpan]] = {}
         self.log_batch_size = log_batch_size
         
     def parse_yaml(self, index_file: str) -> None:
         """Parse the clangd index YAML content from a file."""
-        documents = list(load_yaml_stream(index_file))
+        documents = list(yaml.safe_load_all(index_file))
         
         # First pass: collect all symbols
         total_documents_parsed = 0
@@ -130,25 +146,33 @@ class ClangdCallGraphExtractor:
                 logger.info(f"Parsed {total_documents_parsed} YAML documents for references...")
     
     def parse_function_spans(self, spans_yaml: str) -> None:
-        """Parse function spans from tree-sitter output."""
+        """Parse function spans from tree-sitter output (new format)."""
         documents = list(yaml.safe_load_all(spans_yaml))
         
-        self.function_spans = []
+        self.function_spans_by_file = {}
         for doc in documents:
-            if doc is None:
+            if doc is None or 'FileURI' not in doc or 'Functions' not in doc:
                 continue
-            if 'Name' in doc and 'Kind' in doc and doc['Kind'] == 'Function':
-                span = FunctionSpan.from_dict(doc)
-                self.function_spans.append(span)
-    
+            
+            file_uri = doc['FileURI']
+            spans_in_file = []
+            
+            for func_data in doc['Functions']:
+                if 'BodyLocation' in func_data and func_data['BodyLocation']:
+                    span = FunctionSpan.from_dict(func_data)
+                    spans_in_file.append(span)
+
+            if spans_in_file:
+                self.function_spans_by_file[file_uri] = spans_in_file
+
     def match_function_spans(self) -> None:
         """Match clangd functions with tree-sitter spans and add body locations."""
-        # Create lookup for spans by (name, file_uri, name_location)
         spans_lookup = {}
-        for span in self.function_spans:
-            key = (span.name, span.name_location.file_uri, 
-                   span.name_location.start_line, span.name_location.start_column)
-            spans_lookup[key] = span
+        for file_uri, spans_in_file in self.function_spans_by_file.items():
+            for span in spans_in_file:
+                key = (span.name, file_uri, 
+                       span.name_location.start_line, span.name_location.start_column)
+                spans_lookup[key] = span
         
         matched_count = 0
         for func_id, func_symbol in self.functions.items():
@@ -163,25 +187,18 @@ class ClangdCallGraphExtractor:
                     logger.warning(f"No span match found for function {func_symbol.name} at {key}")
         
         logger.info(f"Matched {matched_count} functions with body spans out of {len(self.functions)}")
-    
+
     def load_function_spans(self, spans_file: str) -> None:
         """Load function spans precomputed by tree-sitter."""
-        
         try:
             with open(spans_file, 'r') as f:
                 spans_yaml = f.read()
-            if spans_yaml.strip():  # Only process non-empty results
+            if spans_yaml.strip():
                 self.parse_function_spans(spans_yaml)
                 self.match_function_spans()
         except Exception as e:
             logger.warning(f"Failed to extract spans from {spans_file}: {e}")
-        
-        # Combine all spans
-        combined_spans = "\n".join(all_spans)
-        if combined_spans.strip():
-            self.parse_function_spans(combined_spans)
-            self.match_function_spans()
-    
+
     def _parse_symbol(self, doc: dict) -> Symbol:
         """Parse a symbol from YAML document."""
         symbol_id = doc['ID']
@@ -219,9 +236,9 @@ class ClangdCallGraphExtractor:
         
         self.symbols[symbol_id].references = references
     
-    def _is_location_within_function_body(self, call_loc: Location, body_loc: Location) -> bool:
+    def _is_location_within_function_body(self, call_loc: Location, body_loc: RelativeLocation, body_file_uri: str) -> bool:
         """Check if a call location is within a function's body boundaries."""
-        if call_loc.file_uri != body_loc.file_uri:
+        if call_loc.file_uri != body_file_uri:
             return False
         
         # Check if call is within body boundaries
@@ -250,9 +267,9 @@ class ClangdCallGraphExtractor:
                 loc1.start_column == loc2.start_column and
                 loc1.end_line == loc2.end_line and
                 loc1.end_column == loc2.end_column)
-    
+
     def extract_call_relationships(self) -> List[CallRelation]:
-        """Extract function call relationships from the parsed data."""
+        """Extract function call relationships from the parsed data using spatial indexing."""
         call_relations = []
         functions_with_bodies = {fid: f for fid, f in self.functions.items() if f.body_location}
         
@@ -260,39 +277,54 @@ class ClangdCallGraphExtractor:
             logger.warning("No functions have body locations. Did you load function spans?")
             return call_relations
         
-        logger.info(f"Analyzing calls for {len(functions_with_bodies)} functions with body spans")
-        
-        # For each function symbol that has references
+        logger.info(f"Analyzing calls for {len(functions_with_bodies)} functions with body spans using optimized lookup")
+
+        # --- OPTIMIZATION: Build a Spatial Index for Function Bodies ---
+        file_to_function_bodies_index: Dict[str, List[Tuple[RelativeLocation, Symbol]]] = {}
+
+        for caller_function_id, caller_symbol in functions_with_bodies.items():
+            if caller_symbol.body_location is not None and caller_symbol.definition is not None:
+                file_uri = caller_symbol.definition.file_uri
+                
+                if file_uri not in file_to_function_bodies_index:
+                    file_to_function_bodies_index[file_uri] = []
+                
+                file_to_function_bodies_index[file_uri].append( (caller_symbol.body_location, caller_symbol) )
+
+        for file_uri in file_to_function_bodies_index:
+            file_to_function_bodies_index[file_uri].sort(key=lambda item: item[0].start_line)
+        logger.info(f"Built spatial index for {len(file_to_function_bodies_index)} files.")
+
+        # --- OPTIMIZED LOOKUP: Use the Spatial Index ---
         callees_processed = 0
         for callee_function_id, callee_symbol in self.symbols.items():
             if not callee_symbol.references or not callee_symbol.is_function():
                 continue
             
-            # Check each reference to see if it's a function call (Kind 12) within a function body
             for reference in callee_symbol.references:
-                # Only consider Kind 12 references (actual usage/calls)
-                if reference.kind != 12:
+                if reference.kind != 12: # Only consider Kind 12 (actual usage/calls)
                     continue
                     
                 call_location = reference.location
                 
-                # Find which function body (if any) contains this reference
-                for caller_function_id, caller_symbol in functions_with_bodies.items():
-                    if self._is_location_within_function_body(call_location, caller_symbol.body_location):
-                        # Filter out declaration/definition references
-                        # Since we use kind:12 to indicate function call, 
-                        # we don't need to filter out declaration/definition references
-                        #if self._is_declaration_reference(callee_symbol, call_location):
-                        #    continue
-                        
-                        call_relations.append(CallRelation(
-                            caller_id=caller_symbol.id,
-                            caller_name=caller_symbol.name,
-                            callee_id=callee_symbol.id,
-                            callee_name=callee_symbol.name,
-                            call_location=call_location
-                        ))
-                        break
+                found_caller_symbol = None
+                if call_location.file_uri in file_to_function_bodies_index:
+                    potential_callers_in_file = file_to_function_bodies_index[call_location.file_uri]
+                    
+                    for body_loc, caller_symbol in potential_callers_in_file:
+                        if self._is_location_within_function_body(call_location, body_loc, call_location.file_uri):
+                            found_caller_symbol = caller_symbol
+                            break # Found the *one* containing caller for this specific call_location
+                
+                if found_caller_symbol is not None:
+                    call_relations.append(CallRelation(
+                        caller_id=found_caller_symbol.id,
+                        caller_name=found_caller_symbol.name,
+                        callee_id=callee_symbol.id,
+                        callee_name=callee_symbol.name,
+                        call_location=call_location
+                    ))
+
             callees_processed += 1
             if callees_processed % self.log_batch_size == 0:
                 logger.info(f"Processed call relationships for {callees_processed} callees...")
@@ -385,22 +417,16 @@ def main():
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     args = parser.parse_args()
     
-    # Read input file
-    with open(args.input_file, 'r') as f:
-        yaml_content = f.read()
     
     # Extract call relationships
     extractor = ClangdCallGraphExtractor(args.log_batch_size)
-    extractor.parse_yaml(args.input_file)
+    with open(args.input_file, 'r') as f:
+        yaml_content = f.read()
+        extractor.parse_yaml(yaml_content)
     
     # Load function spans
     if args.spans_file:
-        with open(args.spans_file, 'r') as f:
-            spans_yaml = f.read()
-        # Manually convert dicts to FunctionSpan objects
-        span_dicts = list(yaml.safe_load_all(spans_yaml))
-        extractor.function_spans = [FunctionSpan.from_dict(d) for d in span_dicts if d]
-        extractor.match_function_spans()
+        extractor.load_function_spans(args.spans_file)
     else:
         logger.error("spans-file must be provided")
         return
@@ -429,21 +455,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Example usage without command line:
-def extract_from_string(yaml_content: str, source_files: List[str] = None, spans_yaml: str = None) -> Tuple[List[CallRelation], str]:
-    """Extract call relations and return both relations and Cypher code."""
-    extractor = ClangdCallGraphExtractor()
-    extractor.parse_yaml(yaml_content)
-    
-    if spans_yaml:
-        extractor.parse_function_spans(spans_yaml)
-        extractor.match_function_spans()
-    elif source_files:
-        extractor.load_function_spans_from_files(source_files)
-    else:
-        raise ValueError("Either source_files or spans_yaml must be provided")
-    
-    call_relations = extractor.extract_call_relationships()
-    cypher_code = extractor.generate_neo4j_cypher(call_relations)
-    return call_relations, cypher_code

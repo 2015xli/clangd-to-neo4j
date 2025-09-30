@@ -20,10 +20,20 @@ The fundamental challenge in building a call graph is that the `clangd` index pr
 
 3.  **Span Matching**: It matches the `clangd` function symbols to the `tree-sitter` function spans using a composite key of `(function_name, file_uri, start_line, start_column)`. This enriches the `clangd` function symbols with a `body_location` property.
 
-4.  **Call Relationship Extraction**: 
-    *   It iterates through every symbol in the index, looking for function calls (references with `Kind: 12`).
-    *   For each call site, it then searches through all the functions that have a `body_location` to find which function body contains the call site.
-    *   When a container is found, it records a `(caller, callee)` `CallRelation` object.
+4.  **Call Relationship Extraction**: The script can extract call relationships using two different algorithms. The default is an optimized, spatially-indexed approach, while a slower, brute-force method is kept for reference.
+
+    *   **Optimized Algorithm (`extract_call_relationships`)**:
+        *   **Spatial Index Creation**: It first builds an in-memory "spatial index". This is a dictionary where keys are file URIs. The value for each file is a list of all function bodies contained in that file, sorted by their starting line number.
+        *   **Optimized Lookup**: It then iterates through every symbol in the index. For each function call reference (`Kind: 12`), it performs a highly optimized lookup:
+            *   It instantly retrieves the list of candidate functions by looking up the call's file URI in the spatial index.
+            *   Because the list is sorted, it can efficiently find the containing function body for the call site.
+        *   **Relation Recording**: Once the containing (caller) function is identified, it records a `(caller, callee)` `CallRelation` object. This avoids the expensive process of iterating through every known function for every call site.
+
+    *   **Slow Algorithm (`extract_call_relationships_slow`)**:
+        *   This is the original, brute-force implementation.
+        *   It iterates through every symbol in the index, looking for function calls (references with `Kind: 12`).
+        *   For each call site, it then iterates through **all** known functions that have a `body_location` to find which function body contains the call site.
+        *   This `O(references * functions)` approach is correct but does not scale well for large codebases, which is why it was replaced by the optimized version.
 
 ## 3. Output
 

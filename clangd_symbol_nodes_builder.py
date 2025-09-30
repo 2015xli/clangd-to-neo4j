@@ -131,7 +131,7 @@ class Neo4jManager:
             logger.info("✅ Connection established!")
             with self.driver.session() as session:
                 result = session.run("RETURN 1 AS result").single()
-                logger.info(f"Test query result: {result["result"]}")
+                logger.info(f"Test query result: {result['result']}")
             return True
         except Exception as e:
             logger.error(f"❌ Connection failed: {e}")
@@ -191,10 +191,10 @@ class Neo4jManager:
 
     def cleanup_orphan_nodes(self) -> int:
         """Removes all nodes that have no relationships (orphan nodes)."""
-        query = "MATCH (n) WHERE size((n)--()) = 0 DETACH DELETE n"
+        query = "MATCH (n) WHERE COUNT { (n)--() } = 0 DETACH DELETE n"
         with self.driver.session() as session:
             result = session.run(query)
-            return result.consume().nodes_deleted
+            return result.consume().counters.nodes_deleted
 
 # -------------------------
 # Symbol processing
@@ -389,12 +389,13 @@ class PathProcessor:
 
         print("Pass 1: Discovering project file structure...")
         total_symbols_processed = 0
-        for sym in load_yaml_stream(index_file):
-            if not sym:
-                continue
-            total_symbols_processed += 1
-            if total_symbols_processed % self.log_batch_size == 0:
-                logger.info(f"Discovered paths from {total_symbols_processed} symbols...")
+        with open(index_file, "r") as f:
+            for sym in yaml.safe_load_all(f):
+                if not sym:
+                    continue
+                total_symbols_processed += 1
+                if total_symbols_processed % self.log_batch_size == 0:
+                    logger.info(f"Discovered paths from {total_symbols_processed} symbols...")
 
                 locations = []
                 if "Definition" in sym:
@@ -418,7 +419,7 @@ class PathProcessor:
                         
                         # Add all parent folders
                         parent = Path(relative_path).parent
-                        while str(parent) != '.':
+                        while str(parent) != '.' and str(parent) != '/':
                             project_folders.add(str(parent))
                             parent = parent.parent
         

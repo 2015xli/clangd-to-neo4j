@@ -9,7 +9,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
-            "args": ["example-clangd-index.yaml", "example-function-span.yaml", "--output", "example-call-graph-cypher.cql", "--stats"]
+            "args": ["example/example-clangd-index.yaml", "example/example-function-span.yaml", "--output", "example-call-graph-cypher.cql", "--stats"]
         }
     ]
 }
