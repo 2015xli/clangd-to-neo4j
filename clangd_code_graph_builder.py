@@ -20,7 +20,7 @@ import gc
 # Import processors from the library scripts
 from clangd_symbol_nodes_builder import PathManager, Neo4jManager, PathProcessor, SymbolProcessor
 from tree_sitter_span_extractor import SpanExtractor
-from clangd_call_graph_builder import ClangdCallGraphExtractor, FunctionSpan
+from clangd_call_graph_builder import ClangdCallGraphExtractor
 
 BATCH_SIZE = 500
 
@@ -102,38 +102,16 @@ def main():
             # --- Pass 3: Ingest Call Graph ---
             logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
             
-            # 1. Extract function spans
-            logger.info("Extracting function spans with tree-sitter...")
-            span_extractor = SpanExtractor(args.log_batch_size)
-            function_span_file_dicts = span_extractor.get_function_spans_from_folder(args.project_path, format="dict")
-            del span_extractor
-            gc.collect()
-
-            num_functions = sum(len(d.get('Functions', [])) for d in function_span_file_dicts)
-            logger.info(f"Found {num_functions} function definitions in {len(function_span_file_dicts)} files.")
-
-            # 2. Parse clangd index and match spans
             call_graph_extractor = ClangdCallGraphExtractor(args.log_batch_size)
+            
+            # 1. Parse clangd index
             logger.info("Parsing clangd index for call graph...")
             with open(clean_yaml_path, 'r') as f:
                 call_graph_extractor.parse_yaml(f)
-            
-            spans_by_file = {}
-            for file_dict in function_span_file_dicts:
-                file_uri = file_dict.get('FileURI')
-                if not file_uri or 'Functions' not in file_dict:
-                    continue
-                
-                spans_in_file = [FunctionSpan.from_dict(func_data) for func_data in file_dict['Functions'] if func_data]
-                if spans_in_file:
-                    spans_by_file[file_uri] = spans_in_file
-            
-            call_graph_extractor.function_spans_by_file = spans_by_file
-            del function_span_file_dicts
-            gc.collect()
-            
-            call_graph_extractor.match_function_spans()
 
+            # 2. Load spans from project and match them
+            call_graph_extractor.load_spans_from_project(args.project_path)
+            
             # 3. Extract and ingest call relationships
             call_relations = call_graph_extractor.extract_call_relationships()
             query, params = ClangdCallGraphExtractor.get_call_relation_ingest_query(call_relations)

@@ -19,6 +19,8 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import logging
 import gc
+import os
+from tree_sitter_span_extractor import SpanExtractor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -204,6 +206,35 @@ class ClangdCallGraphExtractor:
                 self.match_function_spans()
         except Exception as e:
             logger.warning(f"Failed to extract spans from {spans_file}: {e}")
+
+    def load_spans_from_project(self, project_path: str) -> None:
+        """
+        Extracts function spans directly from a project folder, then matches them.
+        """
+        logger.info("Extracting function spans with tree-sitter...")
+        span_extractor = SpanExtractor(self.log_batch_size)
+        function_span_file_dicts = span_extractor.get_function_spans_from_folder(project_path, format="dict")
+        del span_extractor
+        gc.collect()
+
+        num_functions = sum(len(d.get('Functions', [])) for d in function_span_file_dicts)
+        logger.info(f"Found {num_functions} function definitions in {len(function_span_file_dicts)} files.")
+
+        spans_by_file = {}
+        for file_dict in function_span_file_dicts:
+            file_uri = file_dict.get('FileURI')
+            if not file_uri or 'Functions' not in file_dict:
+                continue
+            
+            spans_in_file = [FunctionSpan.from_dict(func_data) for func_data in file_dict['Functions'] if func_data]
+            if spans_in_file:
+                spans_by_file[file_uri] = spans_in_file
+        
+        self.function_spans_by_file = spans_by_file
+        del function_span_file_dicts
+        gc.collect()
+        
+        self.match_function_spans()
 
     def _parse_symbol(self, doc: dict) -> Symbol:
         """Parse a symbol from YAML document."""
@@ -429,7 +460,7 @@ def main():
     
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
     parser.add_argument('input_file', help='Path to clangd index YAML file')
-    parser.add_argument('spans_file', help='Pre-computed spans YAML file')
+    parser.add_argument('span_path', help='Path to a pre-computed spans YAML file, or a project directory to scan')
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
@@ -442,17 +473,19 @@ def main():
         yaml_content = f.read()
         extractor.parse_yaml(yaml_content)
     
-    # Load function spans
-    if args.spans_file:
-        extractor.load_function_spans(args.spans_file)
+    # Load function spans from either a file or a project directory
+    if os.path.isdir(args.span_path):
+        extractor.load_spans_from_project(args.span_path)
+    elif os.path.isfile(args.span_path):
+        extractor.load_function_spans(args.span_path)
     else:
-        logger.error("spans-file must be provided")
+        logger.error(f"Span path not found or is not a valid file/directory: {args.span_path}")
         return
     
     call_relations = extractor.extract_call_relationships()
     
     # Get the ingest query and params
-    query, params = extractor.get_call_relation_ingest_query(call_relations)
+    query, params = ClangdCallGraphExtractor.get_call_relation_ingest_query(call_relations)
     
     # Output
     output_data = {
