@@ -12,6 +12,7 @@ from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Tuple, Optional
 from neo4j import GraphDatabase
 import logging
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +506,12 @@ class PathProcessor:
             self.neo4j_mgr.process_batch(batch)
             batch = []
 
+        # Free memory
+        del project_files
+        del project_folders
+        del sorted_folders
+        gc.collect()
+
 # -------------------------
 # Main processing
 # -------------------------
@@ -557,6 +564,10 @@ def main():
         if batch:
             neo4j_mgr.process_batch(batch)
             count += len(batch)
+
+        # Final cleanup
+        del batch
+        gc.collect()
         
         print(f"Done. Processed {total_symbols} symbols with {count} total operations.")
         return 0

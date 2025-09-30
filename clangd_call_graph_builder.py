@@ -18,6 +18,7 @@ import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import logging
+import gc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -188,6 +189,11 @@ class ClangdCallGraphExtractor:
         
         logger.info(f"Matched {matched_count} functions with body spans out of {len(self.functions)}")
 
+        # Free memory
+        del self.function_spans_by_file
+        del spans_lookup
+        gc.collect()
+
     def load_function_spans(self, spans_file: str) -> None:
         """Load function spans precomputed by tree-sitter."""
         try:
@@ -295,6 +301,11 @@ class ClangdCallGraphExtractor:
             file_to_function_bodies_index[file_uri].sort(key=lambda item: item[0].start_line)
         logger.info(f"Built spatial index for {len(file_to_function_bodies_index)} files.")
 
+        # Free memory as these are no longer needed
+        del functions_with_bodies
+        del self.functions
+        gc.collect()
+
         # --- OPTIMIZED LOOKUP: Use the Spatial Index ---
         callees_processed = 0
         for callee_function_id, callee_symbol in self.symbols.items():
@@ -330,6 +341,12 @@ class ClangdCallGraphExtractor:
                 logger.info(f"Processed call relationships for {callees_processed} callees...")
         
         logger.info(f"Extracted {len(call_relations)} call relationships")
+
+        # Free memory
+        del self.symbols
+        del file_to_function_bodies_index
+        gc.collect()
+
         return call_relations
     
     def _is_declaration_reference(self, symbol: Symbol, location: Location) -> bool:
@@ -344,7 +361,8 @@ class ClangdCallGraphExtractor:
         
         return False
     
-    def get_call_relation_ingest_query(self, call_relations: List[CallRelation]) -> Tuple[str, Dict]:
+    @staticmethod
+    def get_call_relation_ingest_query(call_relations: List[CallRelation]) -> Tuple[str, Dict]:
         """
         Generates a single, parameterized Cypher query for ingesting all call relations.
         Assumes all relevant FUNCTION nodes have already been created.

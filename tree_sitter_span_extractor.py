@@ -6,6 +6,7 @@ import tree_sitter_c as tsc
 from tree_sitter import Language, Parser
 import yaml
 import logging
+import gc
 
 logger = logging.getLogger(__name__)
 """
@@ -136,6 +137,12 @@ class SpanExtractor:
 
         functions = self._extract_functions(tree, source_lines)
 
+        # Free memory
+        del source
+        del tree
+        del source_lines
+        gc.collect()
+
         if not functions:
             return "" if format == "yaml" else {}
 
@@ -193,6 +200,11 @@ class SpanExtractor:
             if processed_files % self.log_batch_size == 0:
                 logger.info(f"Processed {processed_files} source files for spans...")
         logger.info(f"Finished processing {processed_files} source files for spans.")
+
+        # Free memory
+        del file_list
+        gc.collect()
+
         if format == "dict":
             return all_docs
         else:
@@ -265,4 +277,8 @@ if __name__ == "__main__":
         else:
             import pprint
             pprint.pprint(results)
+
+    # Final cleanup
+    del results
+    gc.collect()
 
