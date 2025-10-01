@@ -5,11 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Python File",
+            "name": "Python Debugger: Call graph builder",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
-            "args": ["example/example-clangd-index.yaml", "example/example-function-span.yaml", "--output", "example-call-graph-cypher.cql", "--stats"]
+            "program": "clangd_call_graph_builder.py",
+            "args": ["example/example-clangd-index-with-container.yaml", "example/project", "--output", "example-call-graph-cypher.cql", "--stats"]
+        },
+        {
+            "name": "Python Debugger: Code graph builder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "clangd_code_graph_builder.py",
+            "args": ["example/example-clangd-index-with-container.yaml", "example/project"]
         }
+
     ]
 }

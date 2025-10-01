@@ -19,8 +19,8 @@ import gc
 
 # Import processors from the library scripts
 from clangd_symbol_nodes_builder import PathManager, Neo4jManager, PathProcessor, SymbolProcessor
-from clangd_call_graph_builder import ClangdCallGraphExtractor
-from clangd_index_symbol_parser import SymbolParser
+from clangd_call_graph_builder import ClangdCallGraphExtractorWithContainer, ClangdCallGraphExtractorWithoutContainer
+from clangd_index_yaml_parser import SymbolParser
 
 BATCH_SIZE = 500
 
@@ -31,6 +31,8 @@ def main():
     parser = argparse.ArgumentParser(description='Build a code graph from a clangd index.')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project being indexed')
+    parser.add_argument('--nonstream-parsing', action='store_true',
+                        help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
@@ -48,7 +50,7 @@ def main():
 
         # --- Pass 0: Parse Clangd Index ---
         logger.info("\n--- Starting Pass 0: Parsing Clangd Index ---")
-        symbol_parser = SymbolParser(args.log_batch_size)
+        symbol_parser = SymbolParser(args.log_batch_size, nonstream_parsing=args.nonstream_parsing)
         symbol_parser.parse_yaml_file(clean_yaml_path)
 
         # --- Main Processing --- 
@@ -94,10 +96,18 @@ def main():
 
             # --- Pass 3: Ingest Call Graph ---
             logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
-            extractor = ClangdCallGraphExtractor(symbol_parser, args.log_batch_size)
-            extractor.load_spans_from_project(args.project_path)
+            
+            if symbol_parser.has_container_field:
+                extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
+                logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
+            else:
+                extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size)
+                logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
+                # Load spans from project only if needed
+                extractor.load_spans_from_project(args.project_path)
+            
             call_relations = extractor.extract_call_relationships()
-            query, params = ClangdCallGraphExtractor.get_call_relation_ingest_query(call_relations)
+            query, params = extractor.get_call_relation_ingest_query(call_relations)
             
             del extractor # Deletes the extractor and its reference to symbol_parser
             gc.collect()

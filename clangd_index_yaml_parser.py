@@ -60,12 +60,14 @@ class RelativeLocation:
 class Reference:
     kind: int
     location: Location
+    container_id: Optional[str] = None
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Reference':
         return cls(
             kind=data['Kind'],
-            location=Location.from_dict(data['Location'])
+            location=Location.from_dict(data['Location']),
+            container_id=data.get('Container', {}).get('ID') # Extraction logic
         )
 
 @dataclass
@@ -114,24 +116,30 @@ class SymbolParser:
     """
     Parses a clangd YAML index file into an in-memory dictionary of symbols.
     """
-    def __init__(self, log_batch_size: int = 1000):
+    def __init__(self, log_batch_size: int = 1000, nonstream_parsing: bool = False):
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
         self.log_batch_size = log_batch_size
+        self.has_container_field: bool = False
+        self.nonstream_parsing = nonstream_parsing
 
     def parse_yaml_file(self, index_file_path: str):
-        """Reads a YAML file and parses its content."""
+        """Reads a YAML file and parses its content using the selected strategy."""
         logger.info(f"Reading clangd index file: {index_file_path}")
         with open(index_file_path, 'r', errors='ignore') as f:
             yaml_content = f.read()
-        self.parse_yaml_content(yaml_content)
+        
+        if self.nonstream_parsing:
+            self.parse_yaml_content_nonstreaming(yaml_content)
+        else:
+            self.parse_yaml_content_streaming(yaml_content)
 
-    def parse_yaml_content(self, yaml_content: str):
+    def parse_yaml_content_nonstreaming(self, yaml_content: str):
         """
-        Parses the string content of a clangd index YAML.
-        This is a two-pass process to handle forward references.
+        Parses the string content of a clangd index YAML using a two-pass approach.
+        This loads all documents into memory first.
         """
-        logger.info("Parsing YAML content...")
+        logger.info("Parsing YAML content (non-streaming, two-pass)...")
         documents = list(yaml.safe_load_all(yaml_content))
         
         # Pass 1: Collect all symbols
@@ -156,6 +164,36 @@ class SymbolParser:
             total_documents_parsed += 1
             if total_documents_parsed % self.log_batch_size == 0:
                 logger.info(f"Parsed {total_documents_parsed} YAML documents for references...")
+        
+        logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
+
+    def parse_yaml_content_streaming(self, yaml_content: str):
+        """
+        Parses the string content of a clangd index YAML in a single pass (streaming).
+        Assumes !Symbol documents appear before !Refs documents that refer to them.
+        """
+        logger.info("Parsing YAML content (streaming, single-pass)...")
+        
+        documents_generator = yaml.safe_load_all(yaml_content)
+        
+        total_documents_processed = 0
+        for doc in documents_generator:
+            if not doc:
+                continue
+            
+            # Process Symbols
+            if 'ID' in doc and 'SymInfo' in doc:
+                symbol = self._parse_symbol(doc)
+                self.symbols[symbol.id] = symbol
+                if symbol.is_function():
+                    self.functions[symbol.id] = symbol
+            # Process References
+            elif 'ID' in doc and 'References' in doc and 'SymInfo' not in doc:
+                self._parse_references(doc)
+            
+            total_documents_processed += 1
+            if total_documents_processed % self.log_batch_size == 0:
+                logger.info(f"Processed {total_documents_processed} YAML documents...")
         
         logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
 
@@ -198,5 +236,7 @@ class SymbolParser:
             if 'Location' in ref and 'Kind' in ref:
                 reference = Reference.from_dict(ref)
                 references.append(reference)
-        
+                if not self.has_container_field and reference.container_id: # Condition to set the flag
+                    self.has_container_field = True
+    
         self.symbols[symbol_id].references = references

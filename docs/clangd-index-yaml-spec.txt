@@ -1,37 +1,31 @@
-Exposed data#
-Symbol(s) are the primary objects managed by the index. A function, variable, class, or macro is a Symbol, and each one has an opaque SymbolID. Two declarations of the same thing will produce the same SymbolID and thus be merged into one Symbol.
-
-Symbols have names, declaration/definition locations, documentation, and a bunch of attributes used for code completion.
+!Symbol documents have names, declaration/definition locations, documentation, and a bunch of attributes used for code completion.
 
 They can be looked up by ID, or fuzzy-searched by name.
 
-Refs are uses of a symbol in code, such as a call to a function. They are edges between a Symbol and a location in some file.
+!Refs documents are uses of a symbol in code, such as a call to a function. They are edges between a Symbol and a location in some file.
 
 They can be looked up by SymbolID.
 
-Relation(s) describe related symbols, such as a class that inherits another. They are edges between two Symbols, labeled with a relation kind.
+!Relation documents describe related symbols, such as a class that inherits another. They are edges between two Symbols, labeled with a relation kind.
 
 They are looked up using one of the Symbols and the kind.
 
-
-Each reference has a kind with number like 10, 9, 12, where 10 stands for definition, 12 for an actual use (function call site), and 9 for declaration.
-
+============ In clangd-indexer 16.x =======================
 // clang-tools-extra/clangd/index/Ref.h
 enum class RefKind : uint8_t {
   Unknown = 0,
   Declaration = 1 << 0, // 1
   Definition = 1 << 1,  // 2
   Reference = 1 << 2,   // 4
-  Spelled = 1 << 3,     // 8 : A reference which is a call. Used as a filter for which references
-                        // to store in data structures used for computing outgoing calls.
-  Call = 1 << 4,
+  Spelled = 1 << 3,     // 8  means it is not a MACRO defined name, but literally spelled
   All = Declaration | Definition | Reference | Spelled,
 };
 
+Each reference has a kind with number like 10, 9, 12, where 10 or 2 stands for definition, 12 or 4 for an actual reference, and 9 or 1 for declaration.
 The combined RefKind values for function:
-9:  Declaration (RefKind::Declaration | RefKind::Spelled)
-10: Definition  (RefKind::Definition | RefKind::Spelled)
-12: Reference (real call site)  (RefKind::Reference | RefKind::Spelled)
+9 or 1:  Declaration (RefKind::Declaration | RefKind::Spelled)
+10 or 2: Definition  (RefKind::Definition | RefKind::Spelled)
+12 or 4: Reference   (RefKind::Reference | RefKind::Spelled)
 
 Linux kernel has RefKinds:
   - Kind:            1
@@ -40,3 +34,89 @@ Linux kernel has RefKinds:
   - Kind:            2
   - Kind:            4
   - Kind:            9
+
+
+For function callsite, it should be a function symbol, and either 12 (spelled reference) or 4 (Macro reference).
+
+Also, the !Refs document does not have Container field. It is like below. It does not tell if a reference is a callsite or not (has to check if the symbol is a function), nor does it tell who is the caller function (Container).
+--- !Refs
+ID:              C029E7DFD2ACFCFF
+References:
+  - Kind:            9
+    Location:
+      FileURI:         'file:///home/xli/Public/temp/ComPro_Project/main.h'
+      Start:
+        Line:            360
+        Column:          5
+      End:
+        Line:            360
+        Column:          35
+  - Kind:            12
+    Location:
+      FileURI:         'file:///home/xli/Public/temp/ComPro_Project/settings.c'
+      Start:
+        Line:            89
+        Column:          16
+      End:  
+        Line:            89
+        Column:          46
+
+In order to establish the call relation between functions, we have to develop our own logic.
+
+============ In clangd-indexer 21.x ========================
+// clang-tools-extra/clangd/index/Ref.h
+enum class RefKind : uint8_t {
+  Unknown = 0,
+  Declaration = 1 << 0, // 1
+  Definition = 1 << 1,  // 2
+  Reference = 1 << 2,   // 4
+  Spelled = 1 << 3,     // 8  means the reference symbol is literally spelled name, not via Macro name
+  Call = 1 << 4,        // 16 means this is function reference.
+  All = Declaration | Definition | Reference | Spelled,
+};
+
+It introduces Call RefKind to make call analysis easier. 
+
+Linux kernel has RefKinds:
+  - Kind:            1
+  - Kind:            10
+  - Kind:            12
+  - Kind:            17
+  - Kind:            18
+  - Kind:            2
+  - Kind:            20
+  - Kind:            25
+  - Kind:            26
+  - Kind:            28
+  - Kind:            4
+  - Kind:            9
+
+For function callsite, it should be either 28 ( Call | Reference | Spelled, spelled reference) or 20 ( Call | Reference, Macro reference). No need to check if the reference symbol is a function or not (Call RefKind means a function).
+
+The !Ref document schema introduces a Container field like below, where the ID is the containing symbol ID. For example, the following function symbol has two references, one is declaration (25), the other is callsite (28). For callsite reference, if the container ID is a function symbol, then it means the referenced function C029E7DFD2ACFCFF is called by function 3F406DEEEB8B595D at the specified location. A call relation is obvious from 3F406DEEEB8B595D to C029E7DFD2A.
+--- !Refs
+ID:              C029E7DFD2ACFCFF
+References:
+  - Kind:            25
+    Location:
+      FileURI:         'file:///home/xli/Public/temp/ComPro_Project/main.h'
+      Start: 
+        Line:            360
+        Column:          5
+      End:   
+        Line:            360
+        Column:          35
+    Container:
+      ID:              '0000000000000000'
+  - Kind:            28
+    Location:
+      FileURI:         'file:///home/xli/Public/temp/ComPro_Project/settings.c'
+      Start: 
+        Line:            89
+        Column:          16
+      End:   
+        Line:            89
+        Column:          46
+    Container:
+      ID:              3F406DEEEB8B595D
+

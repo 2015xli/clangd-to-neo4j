@@ -14,17 +14,72 @@ import argparse
 import json
 
 from tree_sitter_span_extractor import SpanExtractor
-from clangd_index_symbol_parser import (
+from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class ClangdCallGraphExtractor:
+# --- Base Extractor Class ---
+class BaseClangdCallGraphExtractor:
     def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
         self.symbol_parser = symbol_parser
         self.log_batch_size = log_batch_size
+
+    def get_call_relation_ingest_query(self, call_relations: List[CallRelation]) -> Tuple[str, Dict]:
+        """Generates a single, parameterized Cypher query for ingesting all call relations."""
+        if not call_relations:
+            return ("", {})
+        query = """
+        UNWIND $relations as relation
+        MATCH (caller:FUNCTION {id: relation.caller_id})
+        MATCH (callee:FUNCTION {id: relation.callee_id})
+        MERGE (caller)-[:CALLS]->(callee)
+        """
+        params = {
+            "relations": [
+                {"caller_id": r.caller_id, "callee_id": r.callee_id} for r in call_relations
+            ]
+        }
+        return (query, params)
+    
+    def generate_statistics(self, call_relations: List[CallRelation]) -> str:
+        """Generate statistics about the extracted call graph."""
+        functions_in_graph = set()
+        callers = set()
+        callees = set()
+        recursive_calls = 0
+        
+        for relation in call_relations:
+            functions_in_graph.add(relation.caller_name)
+            functions_in_graph.add(relation.callee_name)
+            callers.add(relation.caller_name)
+            callees.add(relation.callee_name)
+            if relation.caller_id == relation.callee_id:
+                recursive_calls += 1
+        
+        functions_with_bodies = len([f for f in self.symbol_parser.functions.values() if f.body_location])
+        
+        stats = f"""
+Call Graph Statistics:
+=====================
+Total functions in clangd index: {len(self.symbol_parser.functions)}
+Functions with body spans: {functions_with_bodies}
+Total unique functions in call graph: {len(functions_in_graph)}
+Functions that call others: {len(callers)}
+Functions that are called: {len(callees)}
+Total call relationships: {len(call_relations)}
+Recursive calls: {recursive_calls}
+Functions that only call (entry points): {len(callers - callees)}
+Functions that are only called (leaf functions): {len(callees - callers)}
+"""
+        return stats
+
+# --- Extractor Without Container ---
+class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
+    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
+        super().__init__(symbol_parser, log_batch_size)
         self.function_spans_by_file: Dict[str, List[FunctionSpan]] = {}
 
     def parse_function_spans(self, spans_yaml: str) -> None:
@@ -167,7 +222,7 @@ class ClangdCallGraphExtractor:
                 continue
             
             for reference in callee_symbol.references:
-                if reference.kind != 12:
+                if reference.kind != 12 and reference.kind != 4:
                     continue
                 call_location = reference.location
                 found_caller_symbol = None
@@ -197,62 +252,54 @@ class ClangdCallGraphExtractor:
 
         return call_relations
     
-    @staticmethod
-    def get_call_relation_ingest_query(call_relations: List[CallRelation]) -> Tuple[str, Dict]:
-        """Generates a single, parameterized Cypher query for ingesting all call relations."""
-        if not call_relations:
-            return ("", {})
-        query = """
-        UNWIND $relations as relation
-        MATCH (caller:FUNCTION {id: relation.caller_id})
-        MATCH (callee:FUNCTION {id: relation.callee_id})
-        MERGE (caller)-[:CALLS]->(callee)
-        """
-        params = {
-            "relations": [
-                {"caller_id": r.caller_id, "callee_id": r.callee_id} for r in call_relations
-            ]
-        }
-        return (query, params)
-    
-    @staticmethod
-    def generate_statistics(call_relations: List[CallRelation], functions: Dict[str, Symbol]) -> str:
-        """Generate statistics about the extracted call graph."""
-        functions_in_graph = set()
-        callers = set()
-        callees = set()
-        recursive_calls = 0
+
+class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
+    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
+        super().__init__(symbol_parser, log_batch_size)
+
+    def extract_call_relationships(self) -> List[CallRelation]:
+        call_relations = []
+        logger.info("Extracting call relationships using Container field...")
+
+        callees_processed = 0
+        for callee_function_id, callee_symbol in self.symbol_parser.symbols.items():
+            if not callee_symbol.references or not callee_symbol.is_function():
+                continue
+            
+            for reference in callee_symbol.references:
+                if reference.container_id == '0000000000000000': # Skip if container is '0'
+                    continue
+                # Check for new RefKind::Call values (28 or 20) and Container field
+                if reference.container_id and (reference.kind == 28 or reference.kind == 20):
+                    caller_id = reference.container_id
+                    caller_symbol = self.symbol_parser.symbols.get(caller_id)
+                    
+                    assert caller_symbol and caller_symbol.is_function(), \
+                        f"Container ID {caller_id} for callee {callee_symbol.id} is not a valid function symbol."
+
+                    if caller_symbol and caller_symbol.is_function():
+                        call_relations.append(CallRelation(
+                            caller_id=caller_symbol.id,
+                            caller_name=caller_symbol.name,
+                            callee_id=callee_symbol.id,
+                            callee_name=callee_symbol.name,
+                            call_location=reference.location
+                        ))
+
+            callees_processed += 1
+            if callees_processed % self.log_batch_size == 0:
+                logger.info(f"Processed call relationships for {callees_processed} callees...")
         
-        for relation in call_relations:
-            functions_in_graph.add(relation.caller_name)
-            functions_in_graph.add(relation.callee_name)
-            callers.add(relation.caller_name)
-            callees.add(relation.callee_name)
-            if relation.caller_id == relation.callee_id:
-                recursive_calls += 1
-        
-        functions_with_bodies = len([f for f in functions.values() if f.body_location])
-        
-        stats = f"""
-Call Graph Statistics:
-=====================
-Total functions in clangd index: {len(functions)}
-Functions with body spans: {functions_with_bodies}
-Total unique functions in call graph: {len(functions_in_graph)}
-Functions that call others: {len(callers)}
-Functions that are called: {len(callees)}
-Total call relationships: {len(call_relations)}
-Recursive calls: {recursive_calls}
-Functions that only call (entry points): {len(callers - callees)}
-Functions that are only called (leaf functions): {len(callees - callers)}
-"""
-        return stats
+        logger.info(f"Extracted {len(call_relations)} call relationships")
+        return call_relations
 
 def main():
     """Main function to demonstrate usage."""
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
     parser.add_argument('input_file', help='Path to clangd index YAML file')
     parser.add_argument('span_path', help='Path to a pre-computed spans YAML file, or a project directory to scan')
+    parser.add_argument('--nonstream-parsing', action='store_true',
+                        help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
@@ -262,22 +309,28 @@ def main():
     symbol_parser = SymbolParser(args.log_batch_size)
     symbol_parser.parse_yaml_file(args.input_file)
 
-    # 2. Create extractor and load spans
-    extractor = ClangdCallGraphExtractor(symbol_parser, args.log_batch_size)
-    if os.path.isdir(args.span_path):
-        extractor.load_spans_from_project(args.span_path)
-    elif os.path.isfile(args.span_path):
-        extractor.load_function_spans(args.span_path)
+    # 2. Create extractor based on available features
+    if symbol_parser.has_container_field:
+        extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
+        logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
     else:
-        logger.error(f"Span path not found or is not a valid file/directory: {args.span_path}")
-        return
+        extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size)
+        logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
+        # Load function spans only if needed
+        if os.path.isdir(args.span_path):
+            extractor.load_spans_from_project(args.span_path)
+        elif os.path.isfile(args.span_path):
+            extractor.load_function_spans(args.span_path)
+        else:
+            logger.error(f"Span path not found or is not a valid file/directory: {args.span_path}")
+            return
     
     # 3. Extract call relationships
     call_relations = extractor.extract_call_relationships()
     
     # 4. Get the ingest query and clean up
-    query, params = ClangdCallGraphExtractor.get_call_relation_ingest_query(call_relations)
-    stats = ClangdCallGraphExtractor.generate_statistics(call_relations, symbol_parser.functions)
+    query, params = extractor.get_call_relation_ingest_query(call_relations)
+    stats = extractor.generate_statistics(call_relations)
     del symbol_parser
     del extractor
     gc.collect()

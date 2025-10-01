@@ -14,7 +14,7 @@ import logging
 import gc
 
 # New imports from the common parser module
-from clangd_index_symbol_parser import SymbolParser, Symbol, Location
+from clangd_index_yaml_parser import SymbolParser, Symbol, Location
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ class SymbolProcessor:
         file_path = self.path_manager.uri_to_relative_path(sym.definition.file_uri)
         if sym.kind in ["Function", "Struct", "Class", "Union", "Enum"]:
             label = "FUNCTION" if sym.kind == "Function" else "DATA_STRUCTURE"
-            return [(f"MATCH (f:FILE {{path: $file_path}}), (n:{label} {{id: $node_id}}) MERGE (f)-[:DEFINES]->(n)",
+            return [(f"MATCH (f:FILE {{path: $file_path}}) WITH f MATCH (n:{label} {{id: $node_id}}) MERGE (f)-[:DEFINES]->(n)",
                      {"file_path": file_path, "node_id": sym.id})]
         return []
 
