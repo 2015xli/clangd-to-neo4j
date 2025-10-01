@@ -3,15 +3,15 @@
 Main entry point for the code graph ingestion pipeline.
 
 This script orchestrates the different processors to build a complete code graph:
-1. Extracts function spans using tree-sitter.
-2. Ingests the code's file/folder structure.
-3. Ingests symbol definitions (functions, structs, etc.).
-4. Ingests the function call graph.
+0. Parses the clangd YAML index into an in-memory object.
+1. Ingests the code's file/folder structure.
+2. Ingests symbol definitions (functions, structs, etc.).
+3. Ingests the function call graph.
+4. Cleans up orphan nodes.
 """
 
 import argparse
 import sys
-import yaml
 import logging
 import os
 import tempfile
@@ -19,8 +19,8 @@ import gc
 
 # Import processors from the library scripts
 from clangd_symbol_nodes_builder import PathManager, Neo4jManager, PathProcessor, SymbolProcessor
-from tree_sitter_span_extractor import SpanExtractor
 from clangd_call_graph_builder import ClangdCallGraphExtractor
+from clangd_index_symbol_parser import SymbolParser
 
 BATCH_SIZE = 500
 
@@ -46,23 +46,25 @@ def main():
             clean_yaml_path = temp_f.name
         logger.info(f"Sanitized YAML written to temporary file: {clean_yaml_path}")
 
+        # --- Pass 0: Parse Clangd Index ---
+        logger.info("\n--- Starting Pass 0: Parsing Clangd Index ---")
+        symbol_parser = SymbolParser(args.log_batch_size)
+        symbol_parser.parse_yaml_file(clean_yaml_path)
+
         # --- Main Processing --- 
         path_manager = PathManager(args.project_path)
-        
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection():
-                logger.error("Failed to connect to Neo4j. Exiting.")
                 return 1
 
-            # Reset database and create constraints
             neo4j_mgr.reset_database()
             neo4j_mgr.create_project_node(path_manager.project_path)
             neo4j_mgr.create_constraints()
 
             # --- Pass 1: Ingest File & Folder Structure ---
-            logger.info("--- Starting Pass 1: Ingesting File & Folder Structure ---")
+            logger.info("\n--- Starting Pass 1: Ingesting File & Folder Structure ---")
             path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size)
-            path_processor.ingest_paths(clean_yaml_path)
+            path_processor.ingest_paths(symbol_parser.symbols)
             del path_processor
             gc.collect()
             logger.info("--- Finished Pass 1 ---")
@@ -70,25 +72,16 @@ def main():
             # --- Pass 2: Ingest Symbol Definitions ---
             logger.info("\n--- Starting Pass 2: Ingesting Symbol Definitions ---")
             symbol_processor = SymbolProcessor(path_manager)
-            batch, count, total_symbols = [], 0, 0
-
-            with open(clean_yaml_path, "r") as f:
-                for sym in yaml.safe_load_all(f):
-                    if not sym:
-                        continue
-                    total_symbols += 1
-                    if total_symbols % args.log_batch_size == 0:
-                        logger.info(f"Processed {total_symbols} symbols...")
-                    
-                    ops = symbol_processor.process_symbol(sym)
-                    batch.extend(ops)
-                    
-                    if len(batch) >= BATCH_SIZE:
-                        neo4j_mgr.process_batch(batch)
-                        count += len(batch)
-                        logger.info(f"Committed {count} symbol operations...")
-                        batch = []
-            
+            batch, count = [], 0
+            for i, sym in enumerate(symbol_parser.symbols.values()):
+                if (i + 1) % args.log_batch_size == 0:
+                    logger.info(f"Processed {i + 1} symbols...")
+                batch.extend(symbol_processor.process_symbol(sym))
+                if len(batch) >= BATCH_SIZE:
+                    neo4j_mgr.process_batch(batch)
+                    count += len(batch)
+                    logger.info(f"Committed {count} symbol operations...")
+                    batch = []
             if batch:
                 neo4j_mgr.process_batch(batch)
                 count += len(batch)
@@ -101,31 +94,19 @@ def main():
 
             # --- Pass 3: Ingest Call Graph ---
             logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
-            
-            call_graph_extractor = ClangdCallGraphExtractor(args.log_batch_size)
-            
-            # 1. Parse clangd index
-            logger.info("Parsing clangd index for call graph...")
-            with open(clean_yaml_path, 'r') as f:
-                call_graph_extractor.parse_yaml(f)
-
-            # 2. Load spans from project and match them
-            call_graph_extractor.load_spans_from_project(args.project_path)
-            
-            # 3. Extract and ingest call relationships
-            call_relations = call_graph_extractor.extract_call_relationships()
+            extractor = ClangdCallGraphExtractor(symbol_parser, args.log_batch_size)
+            extractor.load_spans_from_project(args.project_path)
+            call_relations = extractor.extract_call_relationships()
             query, params = ClangdCallGraphExtractor.get_call_relation_ingest_query(call_relations)
             
-            del call_graph_extractor
+            del extractor # Deletes the extractor and its reference to symbol_parser
             gc.collect()
             
             if query:
-                logger.info(f"Ingesting {len(call_relations)} call relationships with a single query...")
+                logger.info(f"Ingesting {len(call_relations)} call relationships...")
                 with neo4j_mgr.driver.session() as session:
                     session.run(query, **params)
                 logger.info("Call graph ingestion complete.")
-            else:
-                logger.info("No call relationships found to ingest.")
             
             del call_relations
             gc.collect()
@@ -140,6 +121,7 @@ def main():
             else:
                 logger.info("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
 
+        del symbol_parser
         del path_manager
         gc.collect()
         logger.info("\n✅ All passes complete. Code graph ingestion finished.")
