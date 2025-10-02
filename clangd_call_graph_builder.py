@@ -18,7 +18,7 @@ from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Base Extractor Class ---
@@ -216,6 +216,7 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         del functions_with_bodies
         gc.collect()
 
+        logger.info("Processing call relationships for callees...")
         callees_processed = 0
         for callee_function_id, callee_symbol in self.symbol_parser.symbols.items():
             if not callee_symbol.references or not callee_symbol.is_function():
@@ -244,7 +245,9 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
 
             callees_processed += 1
             if callees_processed % self.log_batch_size == 0:
-                logger.info(f"Processed call relationships for {callees_processed} callees...")
+                print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Processed call relationships for {callees_processed} callees.")
         
         logger.info(f"Extracted {len(call_relations)} call relationships")
         del file_to_function_bodies_index
@@ -261,6 +264,7 @@ class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
         call_relations = []
         logger.info("Extracting call relationships using Container field...")
 
+        logger.info("Processing call relationships for callees...")
         callees_processed = 0
         for callee_function_id, callee_symbol in self.symbol_parser.symbols.items():
             if not callee_symbol.references or not callee_symbol.is_function():
@@ -288,7 +292,9 @@ class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
 
             callees_processed += 1
             if callees_processed % self.log_batch_size == 0:
-                logger.info(f"Processed call relationships for {callees_processed} callees...")
+                print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Processed call relationships for {callees_processed} callees.")
         
         logger.info(f"Extracted {len(call_relations)} call relationships")
         return call_relations

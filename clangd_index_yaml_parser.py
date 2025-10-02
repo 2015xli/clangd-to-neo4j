@@ -143,7 +143,7 @@ class SymbolParser:
         documents = list(yaml.safe_load_all(yaml_content))
         
         # Pass 1: Collect all symbols
-        logger.info("Starting Pass 1: Parsing Symbols")
+        logger.info("Pass 1: Parsing symbols...")
         total_documents_parsed = 0
         for doc in documents:
             if doc and 'ID' in doc and 'SymInfo' in doc:
@@ -153,17 +153,21 @@ class SymbolParser:
                     self.functions[symbol.id] = symbol
             total_documents_parsed += 1
             if total_documents_parsed % self.log_batch_size == 0:
-                logger.info(f"Parsed {total_documents_parsed} YAML documents for symbols...")
+                print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Parsed {total_documents_parsed} YAML documents for symbols.")
 
         # Pass 2: Collect all references
-        logger.info("Starting Pass 2: Parsing References")
+        logger.info("Pass 2: Parsing references...")
         total_documents_parsed = 0
         for doc in documents:
             if doc and 'ID' in doc and 'References' in doc and 'SymInfo' not in doc:
                 self._parse_references(doc)
             total_documents_parsed += 1
             if total_documents_parsed % self.log_batch_size == 0:
-                logger.info(f"Parsed {total_documents_parsed} YAML documents for references...")
+                print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Parsed {total_documents_parsed} YAML documents for references.")
         
         logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
 
@@ -193,7 +197,9 @@ class SymbolParser:
             
             total_documents_processed += 1
             if total_documents_processed % self.log_batch_size == 0:
-                logger.info(f"Processed {total_documents_processed} YAML documents...")
+                print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Processed {total_documents_processed} YAML documents.")
         
         logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
 

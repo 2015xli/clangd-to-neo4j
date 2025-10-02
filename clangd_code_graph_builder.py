@@ -38,7 +38,7 @@ def main():
                       help='Keep orphan nodes in the graph (skip cleanup)')
     args = parser.parse_args()
 
-    # --- Pre-Pass: Sanitize the large YAML file --- 
+    # --- Pre-Phase: Sanitize the large YAML file --- 
     logger.info(f"Sanitizing input file: {args.index_file}")
     try:
         with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', errors='ignore') as temp_f:
@@ -48,8 +48,8 @@ def main():
             clean_yaml_path = temp_f.name
         logger.info(f"Sanitized YAML written to temporary file: {clean_yaml_path}")
 
-        # --- Pass 0: Parse Clangd Index ---
-        logger.info("\n--- Starting Pass 0: Parsing Clangd Index ---")
+        # --- Phase 0: Parse Clangd Index ---
+        logger.info("\n--- Starting Phase 0: Parsing Clangd Index ---")
         symbol_parser = SymbolParser(args.log_batch_size, nonstream_parsing=args.nonstream_parsing)
         symbol_parser.parse_yaml_file(clean_yaml_path)
 
@@ -63,24 +63,24 @@ def main():
             neo4j_mgr.create_project_node(path_manager.project_path)
             neo4j_mgr.create_constraints()
 
-            # --- Pass 1: Ingest File & Folder Structure ---
-            logger.info("\n--- Starting Pass 1: Ingesting File & Folder Structure ---")
+            # --- Phase 1: Ingest File & Folder Structure ---
+            logger.info("\n--- Starting Phase 1: Ingesting File & Folder Structure ---")
             path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size)
             path_processor.ingest_paths(symbol_parser.symbols)
             del path_processor
             gc.collect()
-            logger.info("--- Finished Pass 1 ---")
+            logger.info("--- Finished Phase 1 ---")
 
-            # --- Pass 2: Ingest Symbol Definitions ---
-            logger.info("\n--- Starting Pass 2: Ingesting Symbol Definitions ---")
+            # --- Phase 2: Ingest Symbol Definitions ---
+            logger.info("\n--- Starting Phase 2: Ingesting Symbol Definitions ---")
             symbol_processor = SymbolProcessor(path_manager)
             symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
             del symbol_processor
             gc.collect()
-            logger.info("--- Finished Pass 2 ---")
+            logger.info("--- Finished Phase 2 ---")
 
-            # --- Pass 3: Ingest Call Graph ---
-            logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
+            # --- Phase 3: Ingest Call Graph ---
+            logger.info("\n--- Starting Phase 3: Ingesting Call Graph ---")
             
             if symbol_parser.has_container_field:
                 extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
@@ -105,16 +105,16 @@ def main():
             
             del call_relations
             gc.collect()
-            logger.info("--- Finished Pass 3 ---")
+            logger.info("--- Finished Phase 3 ---")
 
-            # --- Pass 4: Cleanup Orphan Nodes (Optional) ---
+            # --- Phase 4: Cleanup Orphan Nodes (Optional) ---
             if not args.keep_orphans:
-                logger.info("\n--- Starting Pass 4: Cleaning up Orphan Nodes ---")
+                logger.info("\n--- Starting Phase 4: Cleaning up Orphan Nodes ---")
                 deleted_nodes_count = neo4j_mgr.cleanup_orphan_nodes()
                 logger.info(f"Removed {deleted_nodes_count} orphan nodes.")
-                logger.info("--- Finished Pass 4 ---")
+                logger.info("--- Finished Phase 4 ---")
             else:
-                logger.info("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
+                logger.info("\n--- Skipping Phase 4: Keeping orphan nodes as requested ---")
 
         del symbol_parser
         del path_manager

@@ -158,13 +158,15 @@ class SymbolProcessor:
 
     def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
         symbol_data_list = []
+        logger.info("Processing symbols for ingestion...")
         for i, sym in enumerate(symbols.values()):
             if (i + 1) % log_batch_size == 0:
-                logger.info(f"Processed {i + 1} symbols for ingestion...")
+                print(".", end="", flush=True)
             
             data = self.process_symbol(sym)
             if data:
                 symbol_data_list.append(data)
+        print(flush=True)
         
         if symbol_data_list:
             function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
@@ -211,10 +213,10 @@ class PathProcessor:
 
     def _discover_paths(self, symbols: Dict[str, Symbol]) -> Tuple[set, set]:
         project_files, project_folders = set(), set()
-        logger.info("Pass 1: Discovering project file structure...")
+        logger.info("Discovering project file structure...")
         for i, sym in enumerate(symbols.values()):
             if (i + 1) % self.log_batch_size == 0:
-                logger.info(f"Discovered paths from {i + 1} symbols...")
+                print(".", end="", flush=True)
             for loc in [sym.definition, sym.declaration]:
                 if loc and urlparse(loc.file_uri).scheme == 'file':
                     abs_path = unquote(urlparse(loc.file_uri).path)
@@ -225,6 +227,7 @@ class PathProcessor:
                         while str(parent) != '.' and str(parent) != '/':
                             project_folders.add(str(parent))
                             parent = parent.parent
+        print(flush=True)
         logger.info(f"Discovered {len(project_files)} files and {len(project_folders)} folders.")
         return project_files, project_folders
 
@@ -346,4 +349,5 @@ def main():
         return 0
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     sys.exit(main())

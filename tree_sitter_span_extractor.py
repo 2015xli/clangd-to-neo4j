@@ -186,6 +186,7 @@ class SpanExtractor:
                     file_list.append(os.path.join(root, f))
         
         all_docs = []
+        logger.info("Processing source files for spans...")
         processed_files = 0
         for file_path in file_list:
             if not os.path.isfile(file_path):
@@ -198,7 +199,8 @@ class SpanExtractor:
                     all_docs.append(res)
             processed_files += 1
             if processed_files % self.log_batch_size == 0:
-                logger.info(f"Processed {processed_files} source files for spans...")
+                print(".", end="", flush=True)
+        print(flush=True)
         logger.info(f"Finished processing {processed_files} source files for spans.")
 
         # Free memory
@@ -212,6 +214,7 @@ class SpanExtractor:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     parser = argparse.ArgumentParser(
         description="Extract function spans from C source/header files"
     )
