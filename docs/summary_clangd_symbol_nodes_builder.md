@@ -17,10 +17,14 @@ This class is responsible for Pass 1 of the ingestion pipeline: creating all `:P
 ### Algorithm
 
 1.  **Discover Paths**: Instead of reading the large index file, this class now operates on the in-memory collection of `Symbol` objects. It iterates through every symbol, inspects its declaration and definition locations, and discovers every unique, in-project file and folder path. It stores these in sets to de-duplicate them.
-2.  **Create Folders**: It sorts the discovered folder paths by depth (e.g., `/src` comes before `/src/components`). This critical step ensures that parent folders are created in Neo4j before their children.
-3.  **Create Files**: After all folders are created, it iterates through the set of discovered files and creates the `:FILE` nodes, connecting them to their parent folders.
+2.  **`UNWIND`-based Ingestion (Folders)**:
+    *   It collects all folder data (path, name, parent path) into a list of maps.
+    *   It then uses two `UNWIND` queries: one to `MERGE` all folder nodes, and another to `MATCH` parent nodes (either `PROJECT` or `FOLDER`) and `MERGE` the `CONTAINS` relationships. This approach is highly efficient for bulk ingestion.
+3.  **`UNWIND`-based Ingestion (Files)**:
+    *   Similarly, it collects all file data into a list of maps.
+    *   It uses two `UNWIND` queries: one to `MERGE` all file nodes, and another to `MATCH` parent nodes (either `PROJECT` or `FOLDER`) and `MERGE` the `CONTAINS` relationships.
 
-This in-memory approach is highly efficient and guarantees that the file system hierarchy is built correctly.
+This `UNWIND`-based approach significantly reduces network round trips and improves ingestion performance.
 
 ## 3. `SymbolProcessor`
 
@@ -28,6 +32,21 @@ This class is responsible for Pass 2 of the ingestion pipeline: creating the nod
 
 ### Algorithm
 
-1.  **Process Single Symbol**: Its main method, `process_symbol`, is called for each `Symbol` object provided by the `SymbolParser`.
-2.  **Node Creation**: It works with the typed `Symbol` object to generate the Cypher to `MERGE` a node with the appropriate label (`:FUNCTION` or `:DATA_STRUCTURE`) and sets its properties (name, signature, scope, etc.).
-3.  **Define Relationship**: It also generates the Cypher to create a `[:DEFINES]` relationship between the file where a symbol is defined and the symbol node itself.
+1.  **`process_symbol` Method**: This method is called for each `Symbol` object provided by the `SymbolParser`. It transforms the typed `Symbol` object into a flat dictionary containing all properties needed for a Neo4j node and its `DEFINES` relationship.
+2.  **`UNWIND`-based Ingestion (`ingest_symbols_and_relationships`)**: 
+    *   This method collects the data dictionaries for all symbols.
+    *   It then separates them by `kind` (e.g., `FUNCTION`, `DATA_STRUCTURE`).
+    *   It uses `UNWIND` queries to:
+        *   `MERGE` all `FUNCTION` nodes.
+        *   `MERGE` all `DATA_STRUCTURE` nodes.
+        *   `MERGE` all `FIELD` nodes.
+        *   `MERGE` all `VARIABLE` nodes.
+        *   `MATCH` the file and symbol nodes and `MERGE` the `DEFINES` relationships.
+
+This `UNWIND`-based approach for symbols and their relationships is highly efficient for bulk ingestion.
+
+## 4. Memory Management
+
+The script is designed for memory efficiency:
+*   It operates on an in-memory collection of `Symbol` objects, avoiding repeated file I/O.
+*   Large intermediate collections (like `project_files`, `project_folders`, and the various data lists for `UNWIND` queries) are explicitly deleted and `gc.collect()` is called as soon as they are no longer needed.
