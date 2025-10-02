@@ -116,62 +116,94 @@ class Neo4jManager:
 # Symbol processing
 # -------------------------
 class SymbolProcessor:
-    """Processes Symbol objects and generates Neo4j operations."""
+    """Processes Symbol objects and prepares data for Neo4j operations."""
     def __init__(self, path_manager: PathManager):
         self.path_manager = path_manager
     
-    def process_symbol(self, sym: Symbol) -> List[Tuple[str, Dict]]:
-        ops = []
+    def process_symbol(self, sym: Symbol) -> Optional[Dict]:
         if not sym.id or not sym.kind:
-            return []
+            return None
+
+        symbol_data = {
+            "id": sym.id,
+            "name": sym.name,
+            "kind": sym.kind,
+            "scope": sym.scope,
+            "language": sym.language,
+            "has_definition": sym.definition is not None,
+        }
 
         if sym.kind == "Function":
-            ops.extend(self._process_function(sym))
-        elif sym.kind in ("Struct", "Class", "Union", "Enum"):
-            ops.extend(self._process_data_structure(sym))
-
-        ops.extend(self._process_file_relationships(sym))
-        return ops
-    
-    def _process_node(self, sym: Symbol, label: str) -> List[Tuple[str, Dict]]:
-        props = {"id": sym.id, "name": sym.name, "scope": sym.scope, "language": sym.language}
-        return [(f"MERGE (n:{label} {{id: $id}}) SET n += $props", {"id": sym.id, "props": props})]
-    
-    def _process_function(self, sym: Symbol) -> List[Tuple[str, Dict]]:
-        ops = self._process_node(sym, "FUNCTION")
-        props = ops[0][1]["props"]
-        props.update({
-            "signature": sym.signature, "return_type": sym.return_type,
-            "type": sym.type, "has_definition": sym.definition is not None
-        })
-        primary_location = sym.definition or sym.declaration
-        if primary_location:
-            abs_file_path = unquote(urlparse(primary_location.file_uri).path)
+            symbol_data.update({
+                "signature": sym.signature,
+                "return_type": sym.return_type,
+                "type": sym.type,
+            })
+            primary_location = sym.definition or sym.declaration
+            if primary_location:
+                abs_file_path = unquote(urlparse(primary_location.file_uri).path)
+                if self.path_manager.is_within_project(abs_file_path):
+                    symbol_data["path"] = self.path_manager.uri_to_relative_path(primary_location.file_uri)
+                else:
+                    symbol_data["path"] = abs_file_path
+                symbol_data["location"] = [primary_location.start_line, primary_location.start_column]
+            
+        # Add file relationship data if a definition exists within the project
+        if sym.definition:
+            abs_file_path = unquote(urlparse(sym.definition.file_uri).path)
             if self.path_manager.is_within_project(abs_file_path):
-                props["path"] = self.path_manager.uri_to_relative_path(primary_location.file_uri)
-            else:
-                props["path"] = abs_file_path
-            props["location"] = [primary_location.start_line, primary_location.start_column]
-        return ops
-    
-    def _process_data_structure(self, sym: Symbol) -> List[Tuple[str, Dict]]:
-        ops = self._process_node(sym, "DATA_STRUCTURE")
-        ops[0][1]["props"].update({"kind": sym.kind, "has_definition": sym.definition is not None})
-        return ops
-    
-    def _process_file_relationships(self, sym: Symbol) -> List[Tuple[str, Dict]]:
-        if not sym.definition:
-            return []
-        abs_file_path = unquote(urlparse(sym.definition.file_uri).path)
-        if not self.path_manager.is_within_project(abs_file_path):
-            return []
-        file_path = self.path_manager.uri_to_relative_path(sym.definition.file_uri)
-        if sym.kind in ["Function", "Struct", "Class", "Union", "Enum"]:
-            label = "FUNCTION" if sym.kind == "Function" else "DATA_STRUCTURE"
-            return [(f"MATCH (f:FILE {{path: $file_path}}) WITH f MATCH (n:{label} {{id: $node_id}}) MERGE (f)-[:DEFINES]->(n)",
-                     {"file_path": file_path, "node_id": sym.id})]
-        return []
+                symbol_data["file_path"] = self.path_manager.uri_to_relative_path(sym.definition.file_uri)
+        
+        return symbol_data
 
+    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
+        symbol_data_list = []
+        for i, sym in enumerate(symbols.values()):
+            if (i + 1) % log_batch_size == 0:
+                logger.info(f"Processed {i + 1} symbols for ingestion...")
+            
+            data = self.process_symbol(sym)
+            if data:
+                symbol_data_list.append(data)
+        
+        if symbol_data_list:
+            function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
+            data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
+
+            if function_data_list:
+                logger.info(f"Creating {len(function_data_list)} FUNCTION nodes using UNWIND...")
+                function_merge_query = """
+                UNWIND $function_data AS data
+                MERGE (n:FUNCTION {id: data.id})
+                ON CREATE SET n += data
+                ON MATCH SET n += data
+                """
+                neo4j_mgr.process_batch([(function_merge_query, {"function_data": function_data_list})])
+            
+            if data_structure_data_list:
+                logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes using UNWIND...")
+                data_structure_merge_query = """
+                UNWIND $data_structure_data AS data
+                MERGE (n:DATA_STRUCTURE {id: data.id})
+                ON CREATE SET n += data
+                ON MATCH SET n += data
+                """
+                neo4j_mgr.process_batch([(data_structure_merge_query, {"data_structure_data": data_structure_data_list})])
+
+            defines_data_list = [d for d in symbol_data_list if 'file_path' in d]
+            if defines_data_list:
+                logger.info(f"Creating {len(defines_data_list)} DEFINES relationships using UNWIND...")
+                defines_rel_query = """
+                UNWIND $defines_data AS data
+                MATCH (f:FILE {path: data.file_path})
+                MATCH (n {id: data.id})
+                MERGE (f)-[:DEFINES]->(n)
+                """
+                neo4j_mgr.process_batch([(defines_rel_query, {"defines_data": defines_data_list})])
+
+        del symbol_data_list, function_data_list, data_structure_data_list, defines_data_list
+        gc.collect()
+ 
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
     def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
@@ -198,27 +230,89 @@ class PathProcessor:
 
     def ingest_paths(self, symbols: Dict[str, Symbol]):
         project_files, project_folders = self._discover_paths(symbols)
-        batch = []
+        folder_data_list = []
         sorted_folders = sorted(list(project_folders), key=lambda p: len(Path(p).parts))
         for folder_path in sorted_folders:
             parent_path = str(Path(folder_path).parent)
-            cypher, params = ("MATCH (p:PROJECT {path: $proj}) MERGE (f:FOLDER {path: $path}) SET f.name = $name MERGE (p)-[:CONTAINS]->(f)",
-                              {"proj": self.path_manager.project_path, "path": folder_path, "name": Path(folder_path).name})
-            if parent_path != '.':
-                cypher, params = ("MERGE (c:FOLDER {path: $path}) SET c.name = $name WITH c MATCH (p:FOLDER {path: $parent}) MERGE (p)-[:CONTAINS]->(c)",
-                                  {"path": folder_path, "name": Path(folder_path).name, "parent": parent_path})
-            batch.append((cypher, params))
-        if batch: self.neo4j_mgr.process_batch(batch); batch = []
+            if parent_path == '.':
+                folder_data_list.append({
+                    "path": folder_path,
+                    "name": Path(folder_path).name,
+                    "parent_path": self.path_manager.project_path, # Use project_path as parent for root folders
+                    "is_root": True
+                })
+            else:
+                folder_data_list.append({
+                    "path": folder_path,
+                    "name": Path(folder_path).name,
+                    "parent_path": parent_path,
+                    "is_root": False
+                })
+        
+        if folder_data_list:
+            logger.info(f"Creating {len(folder_data_list)} folder nodes using UNWIND...")
+            folder_merge_query = """
+            UNWIND $folder_data AS data
+            MERGE (f:FOLDER {path: data.path})
+            ON CREATE SET f.name = data.name
+            ON MATCH SET f.name = data.name
+            """
+            self.neo4j_mgr.process_batch([(folder_merge_query, {"folder_data": folder_data_list})])
+
+            logger.info(f"Creating {len(folder_data_list)} folder relationships using UNWIND...")
+            folder_rel_query = """
+            UNWIND $folder_data AS data
+            MATCH (child:FOLDER {path: data.path})
+            WITH child, data
+            MATCH (parent {path: data.parent_path}) // Match either PROJECT or FOLDER
+            MERGE (parent)-[:CONTAINS]->(child)
+            """
+            self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": folder_data_list})])
+        
+        del folder_data_list
+        gc.collect()
+        # B. Create Files using UNWIND
+        file_data_list = []
         for file_path in project_files:
             parent_path = str(Path(file_path).parent)
-            cypher, params = ("MATCH (p:PROJECT {path: $proj}) MERGE (f:FILE {path: $path}) SET f.name = $name MERGE (p)-[:CONTAINS]->(f)",
-                              {"proj": self.path_manager.project_path, "path": file_path, "name": Path(file_path).name})
-            if parent_path != '.':
-                cypher, params = ("MATCH (p:FOLDER {path: $parent}) MERGE (f:FILE {path: $path}) SET f.name = $name MERGE (p)-[:CONTAINS]->(f)",
-                                  {"parent": parent_path, "path": file_path, "name": Path(file_path).name})
-            batch.append((cypher, params))
-        if batch: self.neo4j_mgr.process_batch(batch)
-        del project_files, project_folders, sorted_folders, batch; gc.collect()
+            if parent_path == '.':
+                file_data_list.append({
+                    "path": file_path,
+                    "name": Path(file_path).name,
+                    "parent_path": self.path_manager.project_path, # Use project_path as parent for root files
+                    "is_root": True
+                })
+            else:
+                file_data_list.append({
+                    "path": file_path,
+                    "name": Path(file_path).name,
+                    "parent_path": parent_path,
+                    "is_root": False
+                })
+        
+        if file_data_list:
+            logger.info(f"Creating {len(file_data_list)} file nodes using UNWIND...")
+            file_merge_query = """
+            UNWIND $file_data AS data
+            MERGE (f:FILE {path: data.path})
+            ON CREATE SET f.name = data.name
+            ON MATCH SET f.name = data.name
+            """
+            self.neo4j_mgr.process_batch([(file_merge_query, {"file_data": file_data_list})])
+
+            logger.info(f"Creating {len(file_data_list)} file relationships using UNWIND...")
+            file_rel_query = """
+            UNWIND $file_data AS data
+            MATCH (child:FILE {path: data.path})
+            WITH child, data
+            MATCH (parent {path: data.parent_path}) // Match either PROJECT or FOLDER
+            MERGE (parent)-[:CONTAINS]->(child)
+            """
+            self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": file_data_list})])
+        
+        del file_data_list
+        del project_files, project_folders, sorted_folders
+        gc.collect()
 
 def main():
     parser = argparse.ArgumentParser(description='Import Clangd index into Neo4j')
@@ -242,19 +336,13 @@ def main():
         path_processor.ingest_paths(symbol_parser.symbols)
 
         logger.info("Pass 2: Processing symbols and relationships...")
-        symbol_processor = SymbolProcessor(path_manager)
-        batch, count = [], 0
-        for i, sym in enumerate(symbol_parser.symbols.values()):
-            if (i + 1) % BATCH_SIZE == 0: logger.info(f"Processed {i + 1} symbols...")
-            batch.extend(symbol_processor.process_symbol(sym))
-            if len(batch) >= BATCH_SIZE:
-                neo4j_mgr.process_batch(batch)
-                count += len(batch)
-                logger.info(f"Committed {count} total operations...")
-                batch = []
-        if batch: neo4j_mgr.process_batch(batch); count += len(batch)
-        del batch, symbol_processor, symbol_parser; gc.collect()
-        logger.info(f"Done. Processed {len(symbol_parser.symbols)} symbols with {count} total operations.")
+        symbol_processor = SymbolProcessor(path_manager, neo4j_mgr)
+        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
+        
+        del symbol_processor
+        gc.collect()
+        
+        logger.info(f"Done. Processed {len(symbol_parser.symbols)} symbols with {len(symbol_parser.symbols)} total operations.")
         return 0
 
 if __name__ == "__main__":

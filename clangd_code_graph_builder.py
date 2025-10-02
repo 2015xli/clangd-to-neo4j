@@ -74,22 +74,7 @@ def main():
             # --- Pass 2: Ingest Symbol Definitions ---
             logger.info("\n--- Starting Pass 2: Ingesting Symbol Definitions ---")
             symbol_processor = SymbolProcessor(path_manager)
-            batch, count = [], 0
-            for i, sym in enumerate(symbol_parser.symbols.values()):
-                if (i + 1) % args.log_batch_size == 0:
-                    logger.info(f"Processed {i + 1} symbols...")
-                batch.extend(symbol_processor.process_symbol(sym))
-                if len(batch) >= BATCH_SIZE:
-                    neo4j_mgr.process_batch(batch)
-                    count += len(batch)
-                    logger.info(f"Committed {count} symbol operations...")
-                    batch = []
-            if batch:
-                neo4j_mgr.process_batch(batch)
-                count += len(batch)
-            
-            logger.info(f"Completed symbol ingestion. Total operations: {count}")
-            del batch
+            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
             del symbol_processor
             gc.collect()
             logger.info("--- Finished Pass 2 ---")
