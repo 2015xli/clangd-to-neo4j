@@ -6,7 +6,7 @@ to produce a function-level call graph.
 
 import yaml
 import re
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import logging
 import gc
 import os
@@ -17,15 +17,18 @@ from tree_sitter_span_extractor import SpanExtractor
 from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
+from clangd_symbol_nodes_builder import PathManager
+from neo4j_manager import Neo4jManager # Import Neo4jManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # --- Base Extractor Class ---
 class BaseClangdCallGraphExtractor:
-    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
+    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
         self.symbol_parser = symbol_parser
         self.log_batch_size = log_batch_size
+        self.ingest_batch_size = ingest_batch_size
 
     def get_call_relation_ingest_query(self, call_relations: List[CallRelation]) -> Tuple[str, Dict]:
         """Generates a single, parameterized Cypher query for ingesting all call relations."""
@@ -76,10 +79,48 @@ Functions that are only called (leaf functions): {len(callees - callers)}
 """
         return stats
 
+    def ingest_call_relations(self, call_relations: List[CallRelation], neo4j_manager: Optional[Neo4jManager] = None) -> None:
+        """
+        Ingests call relations into Neo4j in batches, or writes them to a CQL file.
+        """
+        if not call_relations:
+            logger.info("No call relations to ingest.")
+            return
+
+        total_relations = len(call_relations)
+        logger.info(f"Preparing {total_relations} call relationships for batched ingestion (batch size: {self.ingest_batch_size}).")
+
+        output_file_path = "generated_call_graph_cypher_queries.cql"
+        file_mode = 'w' # Overwrite for the first batch, append for subsequent
+        
+        for i in range(0, total_relations, self.ingest_batch_size):
+            batch = call_relations[i:i + self.ingest_batch_size]
+            query_template, params = self.get_call_relation_ingest_query(batch)
+
+            if neo4j_manager:
+                neo4j_manager.process_batch([(query_template, params)])
+            else:
+                # For .cql file, write the query and then the parameters as a comment.
+                # The query_template already has UNWIND $relations, so we just need to
+                # provide the params as a comment for external tools to use.
+                formatted_query = query_template.strip()
+                formatted_params = json.dumps(params, indent=2)
+                with open(output_file_path, file_mode) as f:
+                    f.write(f"// Batch {i // self.ingest_batch_size + 1} ")
+                    f.write(f"{formatted_query} ")
+                    f.write(f"// PARAMS: {formatted_params} ")
+                file_mode = 'a' # Switch to append after the first write
+
+            print(".", end="", flush=True)
+        print(flush=True)
+        logger.info(f"Finished processing {total_relations} call relationships in batches.")
+        if not neo4j_manager:
+            logger.info(f"Batched Cypher queries written to {output_file_path}")
+
 # --- Extractor Without Container ---
 class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
-    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
-        super().__init__(symbol_parser, log_batch_size)
+    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
+        super().__init__(symbol_parser, log_batch_size, ingest_batch_size)
         self.function_spans_by_file: Dict[str, List[FunctionSpan]] = {}
 
     def parse_function_spans(self, spans_yaml: str) -> None:
@@ -257,8 +298,8 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
     
 
 class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
-    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000):
-        super().__init__(symbol_parser, log_batch_size)
+    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
+        super().__init__(symbol_parser, log_batch_size, ingest_batch_size)
 
     def extract_call_relationships(self) -> List[CallRelation]:
         call_relations = []
@@ -309,10 +350,12 @@ def main():
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
+    parser.add_argument('--ingest', action='store_true', help='If set, ingest directly into Neo4j. Requires Neo4j connection details via environment variables.')
+    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
     args = parser.parse_args()
     
     # 1. Parse the clangd index file
-    symbol_parser = SymbolParser(args.log_batch_size)
+    symbol_parser = SymbolParser(args.log_batch_size, args.nonstream_parsing)
     symbol_parser.parse_yaml_file(args.input_file)
 
     # 2. Create extractor based on available features
@@ -320,7 +363,7 @@ def main():
         extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
     else:
-        extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size)
+        extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
         # Load function spans only if needed
         if os.path.isdir(args.span_path):
@@ -334,27 +377,28 @@ def main():
     # 3. Extract call relationships
     call_relations = extractor.extract_call_relationships()
     
-    # 4. Get the ingest query and clean up
-    query, params = extractor.get_call_relation_ingest_query(call_relations)
-    stats = extractor.generate_statistics(call_relations)
+    # 4. Ingest call relationships (or write to file)
+    neo4j_mgr = None
+    if args.ingest:
+        neo4j_mgr = Neo4jManager()
+        with neo4j_mgr: # Use context manager for connection
+            if not neo4j_mgr.check_connection():
+                logger.error("Failed to connect to Neo4j. Aborting ingestion.")
+                return
+            extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
+    else:
+        extractor.ingest_call_relations(call_relations, neo4j_manager=None)
+    
+    # 5. Generate statistics (if requested)
+    if args.stats:
+        stats = extractor.generate_statistics(call_relations)
+        logger.info(stats)
+
     del symbol_parser
     del extractor
     gc.collect()
 
-    # 5. Output
-    output_data = {
-        "query": query,
-        "params": params
-    }
-    if args.output:
-        with open(args.output, 'w') as f:
-            json.dump(output_data, f, indent=2)
-        logger.info(f"Cypher query and parameters written to {args.output}")
-    else:
-        logger.info(json.dumps(output_data, indent=2))
-    
-    if args.stats:
-        logger.info(stats)
+    # Removed old output logic
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,121 @@
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/category.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/authenticate.c
+Functions:
+- Name: deauthenticate
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 223
+      Column: 5
+    End:
+      Line: 223
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 223
+      Column: 23
+    End:
+      Line: 244
+      Column: 1
+- Name: authenticateByToken
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 208
+      Column: 4
+    End:
+      Line: 208
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 208
+      Column: 45
+    End:
+      Line: 221
+      Column: 1
+- Name: authenticateByUsername
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 190
+      Column: 4
+    End:
+      Line: 190
+      Column: 26
+  BodyLocation:
+    Start:
+      Line: 190
+      Column: 60
+    End:
+      Line: 206
+      Column: 1
+- Name: authInterfaceError
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 173
+      Column: 5
+    End:
+      Line: 173
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 173
+      Column: 27
+    End:
+      Line: 188
+      Column: 1
+- Name: authInterfaceFail
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 138
+      Column: 5
+    End:
+      Line: 138
+      Column: 22
+  BodyLocation:
+    Start:
+      Line: 138
+      Column: 26
+    End:
+      Line: 171
+      Column: 1
+- Name: authInterfaceComplete
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 58
+      Column: 5
+    End:
+      Line: 58
+      Column: 26
+  BodyLocation:
+    Start:
+      Line: 58
+      Column: 30
+    End:
+      Line: 136
+      Column: 1
+- Name: authInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 2
+      Column: 5
+    End:
+      Line: 2
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 2
+      Column: 22
+    End:
+      Line: 56
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/category.c
 Functions:
 - Name: categoryEdit
   Kind: Function
@@ -115,7 +231,987 @@ Functions:
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/promotion.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/customer.c
+Functions:
+- Name: customerDelete
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 606
+      Column: 4
+    End:
+      Line: 606
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 606
+      Column: 30
+    End:
+      Line: 621
+      Column: 1
+- Name: customerUpdatetotalBuy
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 593
+      Column: 4
+    End:
+      Line: 593
+      Column: 26
+  BodyLocation:
+    Start:
+      Line: 593
+      Column: 55
+    End:
+      Line: 604
+      Column: 1
+- Name: customerUpdatePoint
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 580
+      Column: 4
+    End:
+      Line: 580
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 580
+      Column: 49
+    End:
+      Line: 591
+      Column: 1
+- Name: customerUpdateGender
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 567
+      Column: 4
+    End:
+      Line: 567
+      Column: 24
+  BodyLocation:
+    Start:
+      Line: 567
+      Column: 49
+    End:
+      Line: 578
+      Column: 1
+- Name: customerUpdateLastname
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 554
+      Column: 4
+    End:
+      Line: 554
+      Column: 26
+  BodyLocation:
+    Start:
+      Line: 554
+      Column: 54
+    End:
+      Line: 565
+      Column: 1
+- Name: customerUpdateFirstname
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 541
+      Column: 4
+    End:
+      Line: 541
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 541
+      Column: 56
+    End:
+      Line: 552
+      Column: 1
+- Name: customerInsert
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 523
+      Column: 4
+    End:
+      Line: 523
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 523
+      Column: 76
+    End:
+      Line: 539
+      Column: 1
+- Name: customerSelectById
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 506
+      Column: 4
+    End:
+      Line: 506
+      Column: 22
+  BodyLocation:
+    Start:
+      Line: 506
+      Column: 114
+    End:
+      Line: 521
+      Column: 1
+- Name: customerUpdateInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 398
+      Column: 5
+    End:
+      Line: 398
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 398
+      Column: 32
+    End:
+      Line: 504
+      Column: 1
+- Name: customerDeleteInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 294
+      Column: 5
+    End:
+      Line: 294
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 294
+      Column: 32
+    End:
+      Line: 396
+      Column: 1
+- Name: customerSelectInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 269
+      Column: 5
+    End:
+      Line: 269
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 269
+      Column: 32
+    End:
+      Line: 292
+      Column: 1
+- Name: displayCustomer
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 230
+      Column: 5
+    End:
+      Line: 230
+      Column: 20
+  BodyLocation:
+    Start:
+      Line: 230
+      Column: 32
+    End:
+      Line: 267
+      Column: 1
+- Name: customerInsertInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 51
+      Column: 5
+    End:
+      Line: 51
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 51
+      Column: 32
+    End:
+      Line: 228
+      Column: 1
+- Name: customerSwitchHub
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 5
+      Column: 5
+    End:
+      Line: 5
+      Column: 22
+  BodyLocation:
+    Start:
+      Line: 5
+      Column: 26
+    End:
+      Line: 49
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/decorate.c
+Functions:
+- Name: delay
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 184
+      Column: 5
+    End:
+      Line: 184
+      Column: 10
+  BodyLocation:
+    Start:
+      Line: 184
+      Column: 26
+    End:
+      Line: 189
+      Column: 1
+- Name: bannerFullBorderSection
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 180
+      Column: 5
+    End:
+      Line: 180
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 180
+      Column: 32
+    End:
+      Line: 182
+      Column: 1
+- Name: bannerUserInput
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 176
+      Column: 5
+    End:
+      Line: 176
+      Column: 20
+  BodyLocation:
+    Start:
+      Line: 176
+      Column: 24
+    End:
+      Line: 178
+      Column: 1
+- Name: bannerBlankBorder
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 172
+      Column: 5
+    End:
+      Line: 172
+      Column: 22
+  BodyLocation:
+    Start:
+      Line: 172
+      Column: 26
+    End:
+      Line: 174
+      Column: 1
+- Name: bannerBlankBorderTextLeft
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 168
+      Column: 5
+    End:
+      Line: 168
+      Column: 30
+  BodyLocation:
+    Start:
+      Line: 168
+      Column: 44
+    End:
+      Line: 170
+      Column: 1
+- Name: bannerBlankBorderText
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 164
+      Column: 5
+    End:
+      Line: 164
+      Column: 26
+  BodyLocation:
+    Start:
+      Line: 164
+      Column: 40
+    End:
+      Line: 166
+      Column: 1
+- Name: bannerBlankBorderTextCen
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 157
+      Column: 5
+    End:
+      Line: 157
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 157
+      Column: 43
+    End:
+      Line: 162
+      Column: 1
+- Name: bannerFullBorder
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 151
+      Column: 5
+    End:
+      Line: 151
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 151
+      Column: 25
+    End:
+      Line: 155
+      Column: 1
+- Name: bannerCenStrikethrough
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 141
+      Column: 5
+    End:
+      Line: 141
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 141
+      Column: 105
+    End:
+      Line: 149
+      Column: 1
+- Name: bannerCenBorder
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 131
+      Column: 5
+    End:
+      Line: 131
+      Column: 20
+  BodyLocation:
+    Start:
+      Line: 131
+      Column: 98
+    End:
+      Line: 139
+      Column: 1
+- Name: bannerCen
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 121
+      Column: 5
+    End:
+      Line: 121
+      Column: 14
+  BodyLocation:
+    Start:
+      Line: 121
+      Column: 18
+    End:
+      Line: 129
+      Column: 1
+- Name: bannerInverse
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 111
+      Column: 5
+    End:
+      Line: 111
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 111
+      Column: 96
+    End:
+      Line: 119
+      Column: 1
+- Name: banner
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 101
+      Column: 5
+    End:
+      Line: 101
+      Column: 11
+  BodyLocation:
+    Start:
+      Line: 101
+      Column: 89
+    End:
+      Line: 109
+      Column: 1
+- Name: screenClear
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 95
+      Column: 5
+    End:
+      Line: 95
+      Column: 16
+  BodyLocation:
+    Start:
+      Line: 95
+      Column: 20
+    End:
+      Line: 99
+      Column: 1
+- Name: terminate
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 53
+      Column: 5
+    End:
+      Line: 53
+      Column: 14
+  BodyLocation:
+    Start:
+      Line: 53
+      Column: 18
+    End:
+      Line: 92
+      Column: 1
+- Name: screenAdjust
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 3
+      Column: 5
+    End:
+      Line: 3
+      Column: 17
+  BodyLocation:
+    Start:
+      Line: 3
+      Column: 21
+    End:
+      Line: 51
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/inventory.c
+Functions:
+- Name: inventoryRemove
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 712
+      Column: 5
+    End:
+      Line: 712
+      Column: 20
+  BodyLocation:
+    Start:
+      Line: 712
+      Column: 24
+    End:
+      Line: 770
+      Column: 1
+- Name: inventoryEdit
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 551
+      Column: 5
+    End:
+      Line: 551
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 551
+      Column: 22
+    End:
+      Line: 710
+      Column: 1
+- Name: inventoryAdd
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 261
+      Column: 5
+    End:
+      Line: 261
+      Column: 17
+  BodyLocation:
+    Start:
+      Line: 261
+      Column: 21
+    End:
+      Line: 549
+      Column: 1
+- Name: displaySomething
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 250
+      Column: 5
+    End:
+      Line: 250
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 250
+      Column: 25
+    End:
+      Line: 259
+      Column: 1
+- Name: inventoryDatabaseInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 223
+      Column: 5
+    End:
+      Line: 223
+      Column: 31
+  BodyLocation:
+    Start:
+      Line: 223
+      Column: 35
+    End:
+      Line: 246
+      Column: 1
+- Name: displayInventory
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 193
+      Column: 5
+    End:
+      Line: 193
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 193
+      Column: 33
+    End:
+      Line: 221
+      Column: 1
+- Name: inventoryDelete
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 176
+      Column: 4
+    End:
+      Line: 176
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 176
+      Column: 31
+    End:
+      Line: 191
+      Column: 1
+- Name: inventoryUpdateRemain
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 163
+      Column: 4
+    End:
+      Line: 163
+      Column: 25
+  BodyLocation:
+    Start:
+      Line: 163
+      Column: 58
+    End:
+      Line: 174
+      Column: 1
+- Name: inventoryUpdateCategory
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 150
+      Column: 4
+    End:
+      Line: 150
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 150
+      Column: 64
+    End:
+      Line: 161
+      Column: 1
+- Name: inventoryUpdateProfit
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 137
+      Column: 4
+    End:
+      Line: 137
+      Column: 25
+  BodyLocation:
+    Start:
+      Line: 137
+      Column: 52
+    End:
+      Line: 148
+      Column: 1
+- Name: inventoryUpdatePrice
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 124
+      Column: 4
+    End:
+      Line: 124
+      Column: 24
+  BodyLocation:
+    Start:
+      Line: 124
+      Column: 50
+    End:
+      Line: 135
+      Column: 1
+- Name: inventoryUpdateName
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 111
+      Column: 4
+    End:
+      Line: 111
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 111
+      Column: 47
+    End:
+      Line: 122
+      Column: 1
+- Name: inventoryInsert
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 91
+      Column: 4
+    End:
+      Line: 91
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 91
+      Column: 118
+    End:
+      Line: 109
+      Column: 1
+- Name: inventorySelectById
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 72
+      Column: 4
+    End:
+      Line: 72
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 73
+      Column: 47
+    End:
+      Line: 88
+      Column: 1
+- Name: inventorySwitchHub
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 3
+      Column: 5
+    End:
+      Line: 3
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 3
+      Column: 27
+    End:
+      Line: 70
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/main.c
+Functions:
+- Name: switchHub
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 11
+      Column: 5
+    End:
+      Line: 11
+      Column: 14
+  BodyLocation:
+    Start:
+      Line: 11
+      Column: 18
+    End:
+      Line: 147
+      Column: 1
+- Name: main
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 4
+      Column: 4
+    End:
+      Line: 4
+      Column: 8
+  BodyLocation:
+    Start:
+      Line: 4
+      Column: 12
+    End:
+      Line: 9
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/personnel.c
+Functions:
+- Name: personnelDelete
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 702
+      Column: 4
+    End:
+      Line: 702
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 702
+      Column: 31
+    End:
+      Line: 717
+      Column: 1
+- Name: personnelUpdatePassword
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 689
+      Column: 4
+    End:
+      Line: 689
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 689
+      Column: 55
+    End:
+      Line: 700
+      Column: 1
+- Name: personnelUpdateRole
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 676
+      Column: 4
+    End:
+      Line: 676
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 676
+      Column: 45
+    End:
+      Line: 687
+      Column: 1
+- Name: personnelUpdateLastname
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 663
+      Column: 4
+    End:
+      Line: 663
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 663
+      Column: 55
+    End:
+      Line: 674
+      Column: 1
+- Name: personnelUpdateFirstname
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 650
+      Column: 4
+    End:
+      Line: 650
+      Column: 28
+  BodyLocation:
+    Start:
+      Line: 650
+      Column: 57
+    End:
+      Line: 661
+      Column: 1
+- Name: personnelInsert
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 629
+      Column: 4
+    End:
+      Line: 629
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 630
+      Column: 41
+    End:
+      Line: 648
+      Column: 1
+- Name: personnelSelectById
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 610
+      Column: 4
+    End:
+      Line: 610
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 611
+      Column: 45
+    End:
+      Line: 627
+      Column: 1
+- Name: personnelUpdateInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 497
+      Column: 5
+    End:
+      Line: 497
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 497
+      Column: 33
+    End:
+      Line: 608
+      Column: 1
+- Name: personnelDeleteInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 394
+      Column: 5
+    End:
+      Line: 394
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 394
+      Column: 33
+    End:
+      Line: 495
+      Column: 1
+- Name: personnelSelectInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 369
+      Column: 5
+    End:
+      Line: 369
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 369
+      Column: 33
+    End:
+      Line: 392
+      Column: 1
+- Name: displayPersonnel
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 325
+      Column: 5
+    End:
+      Line: 325
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 325
+      Column: 33
+    End:
+      Line: 367
+      Column: 1
+- Name: personnelInsertInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 51
+      Column: 5
+    End:
+      Line: 51
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 51
+      Column: 33
+    End:
+      Line: 323
+      Column: 1
+- Name: personnelSwitchHub
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 3
+      Column: 5
+    End:
+      Line: 3
+      Column: 23
+  BodyLocation:
+    Start:
+      Line: 3
+      Column: 27
+    End:
+      Line: 49
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/promotion.c
 Functions:
 - Name: promotionDelete
   Kind: Function
@@ -295,43 +1391,7 @@ Functions:
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/purchase.c
-Functions:
-- Name: purchaseInsert
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 23
-      Column: 5
-    End:
-      Line: 23
-      Column: 19
-  BodyLocation:
-    Start:
-      Line: 23
-      Column: 119
-    End:
-      Line: 34
-      Column: 1
-- Name: purchaseSelectById
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 4
-      Column: 0
-    End:
-      Line: 4
-      Column: 18
-  BodyLocation:
-    Start:
-      Line: 5
-      Column: 58
-    End:
-      Line: 21
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/report.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/report.c
 Functions:
 - Name: displayNextMonthForecasting
   Kind: Function
@@ -751,269 +1811,169 @@ Functions:
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/customer.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/settings.c
 Functions:
-- Name: customerDelete
+- Name: settingUpdatePointToPrice
   Kind: Function
   NameLocation:
     Start:
-      Line: 606
-      Column: 4
+      Line: 756
+      Column: 5
     End:
-      Line: 606
-      Column: 18
-  BodyLocation:
-    Start:
-      Line: 606
+      Line: 756
       Column: 30
-    End:
-      Line: 621
-      Column: 1
-- Name: customerUpdatetotalBuy
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 593
-      Column: 4
-    End:
-      Line: 593
-      Column: 26
   BodyLocation:
     Start:
-      Line: 593
-      Column: 55
+      Line: 756
+      Column: 53
     End:
-      Line: 604
+      Line: 759
       Column: 1
-- Name: customerUpdatePoint
+- Name: settingUpdatePriceToPoint
   Kind: Function
   NameLocation:
     Start:
-      Line: 580
-      Column: 4
+      Line: 751
+      Column: 5
     End:
-      Line: 580
-      Column: 23
+      Line: 751
+      Column: 30
   BodyLocation:
     Start:
-      Line: 580
-      Column: 49
+      Line: 751
+      Column: 53
     End:
-      Line: 591
+      Line: 754
       Column: 1
-- Name: customerUpdateGender
+- Name: settingPointToPriceInterface
   Kind: Function
   NameLocation:
     Start:
-      Line: 567
-      Column: 4
+      Line: 609
+      Column: 5
     End:
-      Line: 567
-      Column: 24
+      Line: 609
+      Column: 33
   BodyLocation:
     Start:
-      Line: 567
-      Column: 49
+      Line: 609
+      Column: 37
     End:
-      Line: 578
+      Line: 749
       Column: 1
-- Name: customerUpdateLastname
+- Name: settingPriceToPointInterface
   Kind: Function
   NameLocation:
     Start:
-      Line: 554
-      Column: 4
+      Line: 466
+      Column: 5
     End:
-      Line: 554
-      Column: 26
+      Line: 466
+      Column: 33
   BodyLocation:
     Start:
-      Line: 554
-      Column: 54
+      Line: 466
+      Column: 37
     End:
-      Line: 565
+      Line: 607
       Column: 1
-- Name: customerUpdateFirstname
+- Name: settingUpdateAddress
   Kind: Function
   NameLocation:
     Start:
-      Line: 541
-      Column: 4
+      Line: 461
+      Column: 5
     End:
-      Line: 541
+      Line: 461
+      Column: 25
+  BodyLocation:
+    Start:
+      Line: 461
+      Column: 47
+    End:
+      Line: 464
+      Column: 1
+- Name: settingUpdateStoreName
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 456
+      Column: 5
+    End:
+      Line: 456
       Column: 27
   BodyLocation:
     Start:
-      Line: 541
-      Column: 56
+      Line: 456
+      Column: 46
     End:
-      Line: 552
+      Line: 459
       Column: 1
-- Name: customerInsert
+- Name: settingCat
   Kind: Function
   NameLocation:
     Start:
-      Line: 523
-      Column: 4
-    End:
-      Line: 523
-      Column: 18
-  BodyLocation:
-    Start:
-      Line: 523
-      Column: 76
-    End:
-      Line: 539
-      Column: 1
-- Name: customerSelectById
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 506
-      Column: 4
-    End:
-      Line: 506
-      Column: 22
-  BodyLocation:
-    Start:
-      Line: 506
-      Column: 114
-    End:
-      Line: 521
-      Column: 1
-- Name: customerUpdateInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 398
+      Line: 410
       Column: 5
     End:
-      Line: 398
-      Column: 28
+      Line: 410
+      Column: 15
   BodyLocation:
     Start:
-      Line: 398
-      Column: 32
+      Line: 410
+      Column: 19
     End:
-      Line: 504
+      Line: 454
       Column: 1
-- Name: customerDeleteInterface
+- Name: settingContributorList
   Kind: Function
   NameLocation:
     Start:
-      Line: 294
+      Line: 380
       Column: 5
     End:
-      Line: 294
-      Column: 28
+      Line: 380
+      Column: 27
   BodyLocation:
     Start:
-      Line: 294
-      Column: 32
+      Line: 380
+      Column: 31
     End:
-      Line: 396
+      Line: 408
       Column: 1
-- Name: customerSelectInterface
+- Name: settingUpdateStoreAddressInterface
   Kind: Function
   NameLocation:
     Start:
-      Line: 269
+      Line: 335
       Column: 5
     End:
-      Line: 269
-      Column: 28
+      Line: 335
+      Column: 39
   BodyLocation:
     Start:
-      Line: 269
-      Column: 32
+      Line: 335
+      Column: 43
     End:
-      Line: 292
+      Line: 378
       Column: 1
-- Name: displayCustomer
+- Name: settingUpdateStoreNameInterface
   Kind: Function
   NameLocation:
     Start:
-      Line: 230
+      Line: 290
       Column: 5
     End:
-      Line: 230
-      Column: 20
+      Line: 290
+      Column: 36
   BodyLocation:
     Start:
-      Line: 230
-      Column: 32
+      Line: 290
+      Column: 40
     End:
-      Line: 267
+      Line: 333
       Column: 1
-- Name: customerInsertInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 51
-      Column: 5
-    End:
-      Line: 51
-      Column: 28
-  BodyLocation:
-    Start:
-      Line: 51
-      Column: 32
-    End:
-      Line: 228
-      Column: 1
-- Name: customerSwitchHub
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 5
-      Column: 5
-    End:
-      Line: 5
-      Column: 22
-  BodyLocation:
-    Start:
-      Line: 5
-      Column: 26
-    End:
-      Line: 49
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/decorate.c
-Functions:
-- Name: delay
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 184
-      Column: 5
-    End:
-      Line: 184
-      Column: 10
-  BodyLocation:
-    Start:
-      Line: 184
-      Column: 26
-    End:
-      Line: 189
-      Column: 1
-- Name: bannerFullBorderSection
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 180
-      Column: 5
-    End:
-      Line: 180
-      Column: 28
-  BodyLocation:
-    Start:
-      Line: 180
-      Column: 32
-    End:
-      Line: 182
-      Column: 1
-- Name: bannerUserInput
+- Name: settingUpdatePasswordInterface
   Kind: Function
   NameLocation:
     Start:
@@ -1021,225 +1981,33 @@ Functions:
       Column: 5
     End:
       Line: 176
-      Column: 20
+      Column: 35
   BodyLocation:
     Start:
       Line: 176
-      Column: 24
+      Column: 39
     End:
-      Line: 178
+      Line: 288
       Column: 1
-- Name: bannerBlankBorder
+- Name: settingsSwitchHub
   Kind: Function
   NameLocation:
     Start:
-      Line: 172
+      Line: 3
       Column: 5
     End:
-      Line: 172
+      Line: 3
       Column: 22
   BodyLocation:
     Start:
-      Line: 172
+      Line: 3
       Column: 26
     End:
       Line: 174
       Column: 1
-- Name: bannerBlankBorderTextLeft
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 168
-      Column: 5
-    End:
-      Line: 168
-      Column: 30
-  BodyLocation:
-    Start:
-      Line: 168
-      Column: 44
-    End:
-      Line: 170
-      Column: 1
-- Name: bannerBlankBorderText
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 164
-      Column: 5
-    End:
-      Line: 164
-      Column: 26
-  BodyLocation:
-    Start:
-      Line: 164
-      Column: 40
-    End:
-      Line: 166
-      Column: 1
-- Name: bannerBlankBorderTextCen
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 157
-      Column: 5
-    End:
-      Line: 157
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 157
-      Column: 43
-    End:
-      Line: 162
-      Column: 1
-- Name: bannerFullBorder
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 151
-      Column: 5
-    End:
-      Line: 151
-      Column: 21
-  BodyLocation:
-    Start:
-      Line: 151
-      Column: 25
-    End:
-      Line: 155
-      Column: 1
-- Name: bannerCenStrikethrough
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 141
-      Column: 5
-    End:
-      Line: 141
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 141
-      Column: 105
-    End:
-      Line: 149
-      Column: 1
-- Name: bannerCenBorder
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 131
-      Column: 5
-    End:
-      Line: 131
-      Column: 20
-  BodyLocation:
-    Start:
-      Line: 131
-      Column: 98
-    End:
-      Line: 139
-      Column: 1
-- Name: bannerCen
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 121
-      Column: 5
-    End:
-      Line: 121
-      Column: 14
-  BodyLocation:
-    Start:
-      Line: 121
-      Column: 18
-    End:
-      Line: 129
-      Column: 1
-- Name: bannerInverse
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 111
-      Column: 5
-    End:
-      Line: 111
-      Column: 18
-  BodyLocation:
-    Start:
-      Line: 111
-      Column: 96
-    End:
-      Line: 119
-      Column: 1
-- Name: banner
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 101
-      Column: 5
-    End:
-      Line: 101
-      Column: 11
-  BodyLocation:
-    Start:
-      Line: 101
-      Column: 89
-    End:
-      Line: 109
-      Column: 1
-- Name: screenClear
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 95
-      Column: 5
-    End:
-      Line: 95
-      Column: 16
-  BodyLocation:
-    Start:
-      Line: 95
-      Column: 20
-    End:
-      Line: 99
-      Column: 1
-- Name: terminate
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 53
-      Column: 5
-    End:
-      Line: 53
-      Column: 14
-  BodyLocation:
-    Start:
-      Line: 53
-      Column: 18
-    End:
-      Line: 92
-      Column: 1
-- Name: screenAdjust
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 3
-      Column: 5
-    End:
-      Line: 3
-      Column: 17
-  BodyLocation:
-    Start:
-      Line: 3
-      Column: 21
-    End:
-      Line: 51
-      Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/support.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/support.c
 Functions:
 - Name: max
   Kind: Function
@@ -1419,603 +2187,7 @@ Functions:
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/inventory.c
-Functions:
-- Name: inventoryRemove
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 712
-      Column: 5
-    End:
-      Line: 712
-      Column: 20
-  BodyLocation:
-    Start:
-      Line: 712
-      Column: 24
-    End:
-      Line: 770
-      Column: 1
-- Name: inventoryEdit
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 551
-      Column: 5
-    End:
-      Line: 551
-      Column: 18
-  BodyLocation:
-    Start:
-      Line: 551
-      Column: 22
-    End:
-      Line: 710
-      Column: 1
-- Name: inventoryAdd
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 261
-      Column: 5
-    End:
-      Line: 261
-      Column: 17
-  BodyLocation:
-    Start:
-      Line: 261
-      Column: 21
-    End:
-      Line: 549
-      Column: 1
-- Name: displaySomething
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 250
-      Column: 5
-    End:
-      Line: 250
-      Column: 21
-  BodyLocation:
-    Start:
-      Line: 250
-      Column: 25
-    End:
-      Line: 259
-      Column: 1
-- Name: inventoryDatabaseInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 223
-      Column: 5
-    End:
-      Line: 223
-      Column: 31
-  BodyLocation:
-    Start:
-      Line: 223
-      Column: 35
-    End:
-      Line: 246
-      Column: 1
-- Name: displayInventory
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 193
-      Column: 5
-    End:
-      Line: 193
-      Column: 21
-  BodyLocation:
-    Start:
-      Line: 193
-      Column: 33
-    End:
-      Line: 221
-      Column: 1
-- Name: inventoryDelete
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 176
-      Column: 4
-    End:
-      Line: 176
-      Column: 19
-  BodyLocation:
-    Start:
-      Line: 176
-      Column: 31
-    End:
-      Line: 191
-      Column: 1
-- Name: inventoryUpdateRemain
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 163
-      Column: 4
-    End:
-      Line: 163
-      Column: 25
-  BodyLocation:
-    Start:
-      Line: 163
-      Column: 58
-    End:
-      Line: 174
-      Column: 1
-- Name: inventoryUpdateCategory
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 150
-      Column: 4
-    End:
-      Line: 150
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 150
-      Column: 64
-    End:
-      Line: 161
-      Column: 1
-- Name: inventoryUpdateProfit
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 137
-      Column: 4
-    End:
-      Line: 137
-      Column: 25
-  BodyLocation:
-    Start:
-      Line: 137
-      Column: 52
-    End:
-      Line: 148
-      Column: 1
-- Name: inventoryUpdatePrice
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 124
-      Column: 4
-    End:
-      Line: 124
-      Column: 24
-  BodyLocation:
-    Start:
-      Line: 124
-      Column: 50
-    End:
-      Line: 135
-      Column: 1
-- Name: inventoryUpdateName
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 111
-      Column: 4
-    End:
-      Line: 111
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 111
-      Column: 47
-    End:
-      Line: 122
-      Column: 1
-- Name: inventoryInsert
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 91
-      Column: 4
-    End:
-      Line: 91
-      Column: 19
-  BodyLocation:
-    Start:
-      Line: 91
-      Column: 118
-    End:
-      Line: 109
-      Column: 1
-- Name: inventorySelectById
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 72
-      Column: 4
-    End:
-      Line: 72
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 73
-      Column: 47
-    End:
-      Line: 88
-      Column: 1
-- Name: inventorySwitchHub
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 3
-      Column: 5
-    End:
-      Line: 3
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 3
-      Column: 27
-    End:
-      Line: 70
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/transaction.c
-Functions:
-- Name: transactionInsert
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 21
-      Column: 5
-    End:
-      Line: 21
-      Column: 22
-  BodyLocation:
-    Start:
-      Line: 21
-      Column: 68
-    End:
-      Line: 34
-      Column: 1
-- Name: transactionSelectById
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 3
-      Column: 4
-    End:
-      Line: 3
-      Column: 25
-  BodyLocation:
-    Start:
-      Line: 4
-      Column: 81
-    End:
-      Line: 19
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/personnel.c
-Functions:
-- Name: personnelDelete
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 702
-      Column: 4
-    End:
-      Line: 702
-      Column: 19
-  BodyLocation:
-    Start:
-      Line: 702
-      Column: 31
-    End:
-      Line: 717
-      Column: 1
-- Name: personnelUpdatePassword
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 689
-      Column: 4
-    End:
-      Line: 689
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 689
-      Column: 55
-    End:
-      Line: 700
-      Column: 1
-- Name: personnelUpdateRole
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 676
-      Column: 4
-    End:
-      Line: 676
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 676
-      Column: 45
-    End:
-      Line: 687
-      Column: 1
-- Name: personnelUpdateLastname
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 663
-      Column: 4
-    End:
-      Line: 663
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 663
-      Column: 55
-    End:
-      Line: 674
-      Column: 1
-- Name: personnelUpdateFirstname
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 650
-      Column: 4
-    End:
-      Line: 650
-      Column: 28
-  BodyLocation:
-    Start:
-      Line: 650
-      Column: 57
-    End:
-      Line: 661
-      Column: 1
-- Name: personnelInsert
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 629
-      Column: 4
-    End:
-      Line: 629
-      Column: 19
-  BodyLocation:
-    Start:
-      Line: 630
-      Column: 41
-    End:
-      Line: 648
-      Column: 1
-- Name: personnelSelectById
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 610
-      Column: 4
-    End:
-      Line: 610
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 611
-      Column: 45
-    End:
-      Line: 627
-      Column: 1
-- Name: personnelUpdateInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 497
-      Column: 5
-    End:
-      Line: 497
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 497
-      Column: 33
-    End:
-      Line: 608
-      Column: 1
-- Name: personnelDeleteInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 394
-      Column: 5
-    End:
-      Line: 394
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 394
-      Column: 33
-    End:
-      Line: 495
-      Column: 1
-- Name: personnelSelectInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 369
-      Column: 5
-    End:
-      Line: 369
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 369
-      Column: 33
-    End:
-      Line: 392
-      Column: 1
-- Name: displayPersonnel
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 325
-      Column: 5
-    End:
-      Line: 325
-      Column: 21
-  BodyLocation:
-    Start:
-      Line: 325
-      Column: 33
-    End:
-      Line: 367
-      Column: 1
-- Name: personnelInsertInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 51
-      Column: 5
-    End:
-      Line: 51
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 51
-      Column: 33
-    End:
-      Line: 323
-      Column: 1
-- Name: personnelSwitchHub
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 3
-      Column: 5
-    End:
-      Line: 3
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 3
-      Column: 27
-    End:
-      Line: 49
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/pos.c
-Functions:
-- Name: cashierInterfaceResult
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 279
-      Column: 5
-    End:
-      Line: 279
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 279
-      Column: 43
-    End:
-      Line: 411
-      Column: 1
-- Name: cashierInterfaceDiscount
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 183
-      Column: 5
-    End:
-      Line: 183
-      Column: 29
-  BodyLocation:
-    Start:
-      Line: 183
-      Column: 46
-    End:
-      Line: 277
-      Column: 1
-- Name: cashierInterfaceInventory
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 76
-      Column: 5
-    End:
-      Line: 76
-      Column: 30
-  BodyLocation:
-    Start:
-      Line: 76
-      Column: 45
-    End:
-      Line: 181
-      Column: 1
-- Name: cashierInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 15
-      Column: 5
-    End:
-      Line: 15
-      Column: 21
-  BodyLocation:
-    Start:
-      Line: 15
-      Column: 47
-    End:
-      Line: 74
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/main.c
-Functions:
-- Name: switchHub
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 11
-      Column: 5
-    End:
-      Line: 11
-      Column: 14
-  BodyLocation:
-    Start:
-      Line: 11
-      Column: 18
-    End:
-      Line: 147
-      Column: 1
-- Name: main
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 4
-      Column: 4
-    End:
-      Line: 4
-      Column: 8
-  BodyLocation:
-    Start:
-      Line: 4
-      Column: 12
-    End:
-      Line: 9
-      Column: 1
-
---- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/systemcall.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/systemcall.c
 Functions:
 - Name: settingFileWrite
   Kind: Function
@@ -2419,313 +2591,141 @@ Functions:
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/settings.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/transaction.c
 Functions:
-- Name: settingUpdatePointToPrice
+- Name: transactionInsert
   Kind: Function
   NameLocation:
     Start:
-      Line: 756
+      Line: 21
       Column: 5
     End:
-      Line: 756
-      Column: 30
+      Line: 21
+      Column: 22
   BodyLocation:
     Start:
-      Line: 756
-      Column: 53
+      Line: 21
+      Column: 68
     End:
-      Line: 759
+      Line: 34
       Column: 1
-- Name: settingUpdatePriceToPoint
+- Name: transactionSelectById
   Kind: Function
   NameLocation:
     Start:
-      Line: 751
-      Column: 5
+      Line: 3
+      Column: 4
     End:
-      Line: 751
-      Column: 30
-  BodyLocation:
-    Start:
-      Line: 751
-      Column: 53
-    End:
-      Line: 754
-      Column: 1
-- Name: settingPointToPriceInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 609
-      Column: 5
-    End:
-      Line: 609
-      Column: 33
-  BodyLocation:
-    Start:
-      Line: 609
-      Column: 37
-    End:
-      Line: 749
-      Column: 1
-- Name: settingPriceToPointInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 466
-      Column: 5
-    End:
-      Line: 466
-      Column: 33
-  BodyLocation:
-    Start:
-      Line: 466
-      Column: 37
-    End:
-      Line: 607
-      Column: 1
-- Name: settingUpdateAddress
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 461
-      Column: 5
-    End:
-      Line: 461
+      Line: 3
       Column: 25
   BodyLocation:
     Start:
-      Line: 461
-      Column: 47
+      Line: 4
+      Column: 81
     End:
-      Line: 464
-      Column: 1
-- Name: settingUpdateStoreName
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 456
-      Column: 5
-    End:
-      Line: 456
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 456
-      Column: 46
-    End:
-      Line: 459
-      Column: 1
-- Name: settingCat
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 410
-      Column: 5
-    End:
-      Line: 410
-      Column: 15
-  BodyLocation:
-    Start:
-      Line: 410
-      Column: 19
-    End:
-      Line: 454
-      Column: 1
-- Name: settingContributorList
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 380
-      Column: 5
-    End:
-      Line: 380
-      Column: 27
-  BodyLocation:
-    Start:
-      Line: 380
-      Column: 31
-    End:
-      Line: 408
-      Column: 1
-- Name: settingUpdateStoreAddressInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 335
-      Column: 5
-    End:
-      Line: 335
-      Column: 39
-  BodyLocation:
-    Start:
-      Line: 335
-      Column: 43
-    End:
-      Line: 378
-      Column: 1
-- Name: settingUpdateStoreNameInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 290
-      Column: 5
-    End:
-      Line: 290
-      Column: 36
-  BodyLocation:
-    Start:
-      Line: 290
-      Column: 40
-    End:
-      Line: 333
-      Column: 1
-- Name: settingUpdatePasswordInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 176
-      Column: 5
-    End:
-      Line: 176
-      Column: 35
-  BodyLocation:
-    Start:
-      Line: 176
-      Column: 39
-    End:
-      Line: 288
-      Column: 1
-- Name: settingsSwitchHub
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 3
-      Column: 5
-    End:
-      Line: 3
-      Column: 22
-  BodyLocation:
-    Start:
-      Line: 3
-      Column: 26
-    End:
-      Line: 174
+      Line: 19
       Column: 1
 
 --- !FileFunctionSpans
-FileURI: file:///home/xli/Public/temp/ComPro_Project/authenticate.c
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/sub/purchase.c
 Functions:
-- Name: deauthenticate
+- Name: purchaseInsert
   Kind: Function
   NameLocation:
     Start:
-      Line: 223
+      Line: 23
       Column: 5
     End:
-      Line: 223
+      Line: 23
       Column: 19
   BodyLocation:
     Start:
-      Line: 223
-      Column: 23
+      Line: 23
+      Column: 119
     End:
-      Line: 244
+      Line: 34
       Column: 1
-- Name: authenticateByToken
+- Name: purchaseSelectById
   Kind: Function
   NameLocation:
     Start:
-      Line: 208
-      Column: 4
+      Line: 4
+      Column: 0
     End:
-      Line: 208
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 208
-      Column: 45
-    End:
-      Line: 221
-      Column: 1
-- Name: authenticateByUsername
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 190
-      Column: 4
-    End:
-      Line: 190
-      Column: 26
-  BodyLocation:
-    Start:
-      Line: 190
-      Column: 60
-    End:
-      Line: 206
-      Column: 1
-- Name: authInterfaceError
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 173
-      Column: 5
-    End:
-      Line: 173
-      Column: 23
-  BodyLocation:
-    Start:
-      Line: 173
-      Column: 27
-    End:
-      Line: 188
-      Column: 1
-- Name: authInterfaceFail
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 138
-      Column: 5
-    End:
-      Line: 138
-      Column: 22
-  BodyLocation:
-    Start:
-      Line: 138
-      Column: 26
-    End:
-      Line: 171
-      Column: 1
-- Name: authInterfaceComplete
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 58
-      Column: 5
-    End:
-      Line: 58
-      Column: 26
-  BodyLocation:
-    Start:
-      Line: 58
-      Column: 30
-    End:
-      Line: 136
-      Column: 1
-- Name: authInterface
-  Kind: Function
-  NameLocation:
-    Start:
-      Line: 2
-      Column: 5
-    End:
-      Line: 2
+      Line: 4
       Column: 18
   BodyLocation:
     Start:
-      Line: 2
-      Column: 22
+      Line: 5
+      Column: 58
     End:
-      Line: 56
+      Line: 21
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/sub/pos.c
+Functions:
+- Name: cashierInterfaceResult
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 279
+      Column: 5
+    End:
+      Line: 279
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 279
+      Column: 43
+    End:
+      Line: 411
+      Column: 1
+- Name: cashierInterfaceDiscount
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 183
+      Column: 5
+    End:
+      Line: 183
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 183
+      Column: 46
+    End:
+      Line: 277
+      Column: 1
+- Name: cashierInterfaceInventory
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 76
+      Column: 5
+    End:
+      Line: 76
+      Column: 30
+  BodyLocation:
+    Start:
+      Line: 76
+      Column: 45
+    End:
+      Line: 181
+      Column: 1
+- Name: cashierInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 15
+      Column: 5
+    End:
+      Line: 15
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 15
+      Column: 47
+    End:
+      Line: 74
       Column: 1

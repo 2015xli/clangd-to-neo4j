@@ -9,12 +9,12 @@ import argparse
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Tuple, Optional
-from neo4j import GraphDatabase
 import logging
 import gc
 
 # New imports from the common parser module
 from clangd_index_yaml_parser import SymbolParser, Symbol, Location
+from neo4j_manager import Neo4jManager # Import Neo4jManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,13 @@ BATCH_SIZE = 500
 # -------------------------
 # Neo4j connection settings
 # -------------------------
-NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "12345678")
 
+
+# -------------------------
+# Symbol processing
+# -------------------------
 # --------------------------
-# Helper classes (PathManager, Neo4jManager)
+# Helper classes (PathManager)
 # -------------------------
 class PathManager:
     """Manages file paths and their relationships within the project."""
@@ -54,71 +55,12 @@ class PathManager:
         except ValueError:
             return False
 
-class Neo4jManager:
-    """Manages Neo4j database operations."""
-    def __init__(self, uri: str = NEO4J_URI, user: str = NEO4J_USER, password: str = NEO4J_PASSWORD) -> None:
-        self.uri, self.user, self.password = uri, user, password
-        self.driver = None
-        
-    def __enter__(self):
-        self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.driver: self.driver.close()
-    
-    def check_connection(self) -> bool:
-        try:
-            self.driver.verify_connectivity()
-            logger.info("✅ Connection established!")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Connection failed: {e}")
-            return False
-        
-    def reset_database(self) -> None:
-        with self.driver.session() as session:
-            logger.info("Deleting existing data...")
-            session.run("MATCH (n) DETACH DELETE n")
-            logger.info("Database cleared.")
-    
-    def create_constraints(self) -> None:
-        constraints = [
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (f:FILE) REQUIRE f.path IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (f:FOLDER) REQUIRE f.path IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (fn:FUNCTION) REQUIRE fn.id IS UNIQUE",
-            "CREATE CONSTRAINT IF NOT EXISTS FOR (ds:DATA_STRUCTURE) REQUIRE ds.id IS UNIQUE",
-        ]
-        with self.driver.session() as session:
-            for constraint in constraints:
-                session.run(constraint)
-    
-    def create_project_node(self, project_path: str) -> None:
-        with self.driver.session() as session:
-            session.run(
-                "MERGE (p:PROJECT:FOLDER {path: $path}) SET p.name = $name",
-                {"path": project_path, "name": Path(project_path).name or "Project"}
-            )
-    
-    def process_batch(self, batch: List[Tuple[str, Dict]]) -> None:
-        with self.driver.session() as session:
-            with session.begin_transaction() as tx:
-                for cypher, params in batch:
-                    tx.run(cypher, **params)
-
-    def cleanup_orphan_nodes(self) -> int:
-        query = "MATCH (n) WHERE COUNT { (n)--() } = 0 DETACH DELETE n"
-        with self.driver.session() as session:
-            result = session.run(query)
-            return result.consume().counters.nodes_deleted
-
-# -------------------------
-# Symbol processing
-# -------------------------
 class SymbolProcessor:
     """Processes Symbol objects and prepares data for Neo4j operations."""
-    def __init__(self, path_manager: PathManager):
+    def __init__(self, path_manager: PathManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
         self.path_manager = path_manager
+        self.ingest_batch_size = ingest_batch_size
+        self.log_batch_size = log_batch_size
     
     def process_symbol(self, sym: Symbol) -> Optional[Dict]:
         if not sym.id or not sym.kind:
@@ -156,11 +98,11 @@ class SymbolProcessor:
         
         return symbol_data
 
-    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
+    def _process_and_filter_symbols(self, symbols: Dict[str, Symbol]) -> Tuple[List[Dict], List[Dict], List[Dict]]:
         symbol_data_list = []
         logger.info("Processing symbols for ingestion...")
         for i, sym in enumerate(symbols.values()):
-            if (i + 1) % log_batch_size == 0:
+            if (i + 1) % self.log_batch_size == 0:
                 print(".", end="", flush=True)
             
             data = self.process_symbol(sym)
@@ -168,48 +110,77 @@ class SymbolProcessor:
                 symbol_data_list.append(data)
         print(flush=True)
         
-        if symbol_data_list:
-            function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
-            data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
+        function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
+        data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
+        defines_data_list = [d for d in symbol_data_list if 'file_path' in d]
 
-            if function_data_list:
-                logger.info(f"Creating {len(function_data_list)} FUNCTION nodes using UNWIND...")
-                function_merge_query = """
-                UNWIND $function_data AS data
-                MERGE (n:FUNCTION {id: data.id})
-                ON CREATE SET n += data
-                ON MATCH SET n += data
-                """
-                neo4j_mgr.process_batch([(function_merge_query, {"function_data": function_data_list})])
-            
-            if data_structure_data_list:
-                logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes using UNWIND...")
-                data_structure_merge_query = """
-                UNWIND $data_structure_data AS data
-                MERGE (n:DATA_STRUCTURE {id: data.id})
-                ON CREATE SET n += data
-                ON MATCH SET n += data
-                """
-                neo4j_mgr.process_batch([(data_structure_merge_query, {"data_structure_data": data_structure_data_list})])
-
-            defines_data_list = [d for d in symbol_data_list if 'file_path' in d]
-            if defines_data_list:
-                logger.info(f"Creating {len(defines_data_list)} DEFINES relationships using UNWIND...")
-                defines_rel_query = """
-                UNWIND $defines_data AS data
-                MATCH (f:FILE {path: data.file_path})
-                MATCH (n {id: data.id})
-                MERGE (f)-[:DEFINES]->(n)
-                """
-                neo4j_mgr.process_batch([(defines_rel_query, {"defines_data": defines_data_list})])
-
-        del symbol_data_list, function_data_list, data_structure_data_list, defines_data_list
+        del symbol_data_list # Free memory early
         gc.collect()
+
+        return function_data_list, data_structure_data_list, defines_data_list
+
+    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager):
+        function_data_list, data_structure_data_list, defines_data_list = self._process_and_filter_symbols(symbols)
+
+        self._ingest_function_nodes(function_data_list, neo4j_mgr)
+        self._ingest_data_structure_nodes(data_structure_data_list, neo4j_mgr)
+        self._ingest_defines_relationships(defines_data_list, neo4j_mgr)
+
+        del function_data_list, data_structure_data_list, defines_data_list
+        gc.collect()
+
+    def _ingest_function_nodes(self, function_data_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not function_data_list:
+            return
+        logger.info(f"Creating {len(function_data_list)} FUNCTION nodes in batches...")
+        for i in range(0, len(function_data_list), self.ingest_batch_size):
+            batch = function_data_list[i:i + self.ingest_batch_size]
+            function_merge_query = """
+            UNWIND $function_data AS data
+            MERGE (n:FUNCTION {id: data.id})
+            ON CREATE SET n += data
+            ON MATCH SET n += data
+            """
+            neo4j_mgr.process_batch([(function_merge_query, {"function_data": batch})])
+            print(".", end="", flush=True)
+        print(flush=True)
+
+    def _ingest_data_structure_nodes(self, data_structure_data_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not data_structure_data_list:
+            return
+        logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes in batches...")
+        for i in range(0, len(data_structure_data_list), self.ingest_batch_size):
+            batch = data_structure_data_list[i:i + self.ingest_batch_size]
+            data_structure_merge_query = """
+            UNWIND $data_structure_data AS data
+            MERGE (n:DATA_STRUCTURE {id: data.id})
+            ON CREATE SET n += data
+            ON MATCH SET n += data
+            """
+            neo4j_mgr.process_batch([(data_structure_merge_query, {"data_structure_data": batch})])
+            print(".", end="", flush=True)
+        print(flush=True)
+
+    def _ingest_defines_relationships(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not defines_data_list:
+            return
+        logger.info(f"Creating {len(defines_data_list)} DEFINES relationships in batches...")
+        for i in range(0, len(defines_data_list), self.ingest_batch_size):
+            batch = defines_data_list[i:i + self.ingest_batch_size]
+            defines_rel_query = """
+            UNWIND $defines_data AS data
+            MATCH (f:FILE {path: data.file_path})
+            MATCH (n {id: data.id})
+            MERGE (f)-[:DEFINES]->(n)
+            """
+            neo4j_mgr.process_batch([(defines_rel_query, {"defines_data": batch})])
+            print(".", end="", flush=True)
+        print(flush=True)
  
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
-    def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000):
-        self.path_manager, self.neo4j_mgr, self.log_batch_size = path_manager, neo4j_mgr, log_batch_size
+    def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
+        self.path_manager, self.neo4j_mgr, self.log_batch_size, self.ingest_batch_size = path_manager, neo4j_mgr, log_batch_size, ingest_batch_size
 
     def _discover_paths(self, symbols: Dict[str, Symbol]) -> Tuple[set, set]:
         project_files, project_folders = set(), set()
@@ -233,6 +204,7 @@ class PathProcessor:
 
     def ingest_paths(self, symbols: Dict[str, Symbol]):
         project_files, project_folders = self._discover_paths(symbols)
+        
         folder_data_list = []
         sorted_folders = sorted(list(project_folders), key=lambda p: len(Path(p).parts))
         for folder_path in sorted_folders:
@@ -252,29 +224,10 @@ class PathProcessor:
                     "is_root": False
                 })
         
-        if folder_data_list:
-            logger.info(f"Creating {len(folder_data_list)} folder nodes using UNWIND...")
-            folder_merge_query = """
-            UNWIND $folder_data AS data
-            MERGE (f:FOLDER {path: data.path})
-            ON CREATE SET f.name = data.name
-            ON MATCH SET f.name = data.name
-            """
-            self.neo4j_mgr.process_batch([(folder_merge_query, {"folder_data": folder_data_list})])
-
-            logger.info(f"Creating {len(folder_data_list)} folder relationships using UNWIND...")
-            folder_rel_query = """
-            UNWIND $folder_data AS data
-            MATCH (child:FOLDER {path: data.path})
-            WITH child, data
-            MATCH (parent {path: data.parent_path}) // Match either PROJECT or FOLDER
-            MERGE (parent)-[:CONTAINS]->(child)
-            """
-            self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": folder_data_list})])
-        
+        self._ingest_folder_nodes_and_relationships(folder_data_list)
         del folder_data_list
         gc.collect()
-        # B. Create Files using UNWIND
+
         file_data_list = []
         for file_path in project_files:
             parent_path = str(Path(file_path).parent)
@@ -293,35 +246,67 @@ class PathProcessor:
                     "is_root": False
                 })
         
-        if file_data_list:
-            logger.info(f"Creating {len(file_data_list)} file nodes using UNWIND...")
+        self._ingest_file_nodes_and_relationships(file_data_list)
+        del file_data_list
+        del project_files, project_folders, sorted_folders
+        gc.collect()
+
+    def _ingest_folder_nodes_and_relationships(self, folder_data_list: List[Dict]):
+        if not folder_data_list:
+            return
+        logger.info(f"Creating {len(folder_data_list)} folder nodes and relationships in batches...")
+        for i in range(0, len(folder_data_list), self.ingest_batch_size):
+            batch = folder_data_list[i:i + self.ingest_batch_size]
+            folder_merge_query = """
+            UNWIND $folder_data AS data
+            MERGE (f:FOLDER {path: data.path})
+            ON CREATE SET f.name = data.name
+            ON MATCH SET f.name = data.name
+            """
+            self.neo4j_mgr.process_batch([(folder_merge_query, {"folder_data": batch})])
+
+            folder_rel_query = """
+            UNWIND $folder_data AS data
+            MATCH (child:FOLDER {path: data.path})
+            WITH child, data
+            MATCH (parent {path: data.parent_path})
+            MERGE (parent)-[:CONTAINS]->(child)
+            """
+            self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": batch})])
+            print(".", end="", flush=True)
+        print(flush=True)
+
+    def _ingest_file_nodes_and_relationships(self, file_data_list: List[Dict]):
+        if not file_data_list:
+            return
+        logger.info(f"Creating {len(file_data_list)} file nodes and relationships in batches...")
+        for i in range(0, len(file_data_list), self.ingest_batch_size):
+            batch = file_data_list[i:i + self.ingest_batch_size]
             file_merge_query = """
             UNWIND $file_data AS data
             MERGE (f:FILE {path: data.path})
             ON CREATE SET f.name = data.name
             ON MATCH SET f.name = data.name
             """
-            self.neo4j_mgr.process_batch([(file_merge_query, {"file_data": file_data_list})])
+            self.neo4j_mgr.process_batch([(file_merge_query, {"file_data": batch})])
 
-            logger.info(f"Creating {len(file_data_list)} file relationships using UNWIND...")
             file_rel_query = """
             UNWIND $file_data AS data
             MATCH (child:FILE {path: data.path})
             WITH child, data
-            MATCH (parent {path: data.parent_path}) // Match either PROJECT or FOLDER
+            MATCH (parent {path: data.parent_path})
             MERGE (parent)-[:CONTAINS]->(child)
             """
-            self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": file_data_list})])
-        
-        del file_data_list
-        del project_files, project_folders, sorted_folders
-        gc.collect()
+            self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": batch})])
+            print(".", end="", flush=True)
+        print(flush=True)
 
 def main():
     parser = argparse.ArgumentParser(description='Import Clangd index into Neo4j')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
+    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes and relationships (default: 1000).')
     args = parser.parse_args()
     
     logger.info("Pass 0: Parsing clangd index file...")
@@ -335,11 +320,11 @@ def main():
         neo4j_mgr.create_project_node(path_manager.project_path)
         neo4j_mgr.create_constraints()
         
-        path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size)
+        path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size, args.ingest_batch_size)
         path_processor.ingest_paths(symbol_parser.symbols)
 
         logger.info("Pass 2: Processing symbols and relationships...")
-        symbol_processor = SymbolProcessor(path_manager, neo4j_mgr)
+        symbol_processor = SymbolProcessor(path_manager, args.ingest_batch_size)
         symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
         
         del symbol_processor

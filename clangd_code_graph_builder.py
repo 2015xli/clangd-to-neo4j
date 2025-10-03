@@ -34,6 +34,7 @@ def main():
     parser.add_argument('--nonstream-parsing', action='store_true',
                         help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
+    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     args = parser.parse_args()
@@ -65,7 +66,7 @@ def main():
 
             # --- Phase 1: Ingest File & Folder Structure ---
             logger.info("\n--- Starting Phase 1: Ingesting File & Folder Structure ---")
-            path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size)
+            path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size, args.ingest_batch_size)
             path_processor.ingest_paths(symbol_parser.symbols)
             del path_processor
             gc.collect()
@@ -73,8 +74,8 @@ def main():
 
             # --- Phase 2: Ingest Symbol Definitions ---
             logger.info("\n--- Starting Phase 2: Ingesting Symbol Definitions ---")
-            symbol_processor = SymbolProcessor(path_manager)
-            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
+            symbol_processor = SymbolProcessor(path_manager, args.log_batch_size, args.ingest_batch_size)
+            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr)
             del symbol_processor
             gc.collect()
             logger.info("--- Finished Phase 2 ---")
@@ -83,28 +84,25 @@ def main():
             logger.info("\n--- Starting Phase 3: Ingesting Call Graph ---")
             
             if symbol_parser.has_container_field:
-                extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
+                extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
             else:
-                extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size)
+                extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
                 # Load spans from project only if needed
                 extractor.load_spans_from_project(args.project_path)
             
             call_relations = extractor.extract_call_relationships()
-            query, params = extractor.get_call_relation_ingest_query(call_relations)
+            
+            # Use the new ingest_call_relations method for batched ingestion
+            extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
             
             del extractor # Deletes the extractor and its reference to symbol_parser
             gc.collect()
             
-            if query:
-                logger.info(f"Ingesting {len(call_relations)} call relationships...")
-                with neo4j_mgr.driver.session() as session:
-                    session.run(query, **params)
-                logger.info("Call graph ingestion complete.")
-            
             del call_relations
             gc.collect()
+            logger.info("Call graph ingestion complete.")
             logger.info("--- Finished Phase 3 ---")
 
             # --- Phase 4: Cleanup Orphan Nodes (Optional) ---

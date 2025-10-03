@@ -9,14 +9,14 @@
             "type": "debugpy",
             "request": "launch",
             "program": "clangd_call_graph_builder.py",
-            "args": ["example/example-clangd-index-with-container.yaml", "example/project", "--output", "example-call-graph-cypher.cql", "--stats"]
+            "args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10", "--stats"]
         },
         {
             "name": "Python Debugger: Code graph builder",
             "type": "debugpy",
             "request": "launch",
             "program": "clangd_code_graph_builder.py",
-            "args": ["example/example-clangd-index-with-container.yaml", "example/project"]
+            "args": ["example/example-clangd-index-with-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10"]
         }
 
     ]
