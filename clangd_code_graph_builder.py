@@ -18,9 +18,11 @@ import tempfile
 import gc
 
 # Import processors from the library scripts
-from clangd_symbol_nodes_builder import PathManager, Neo4jManager, PathProcessor, SymbolProcessor
+from clangd_symbol_nodes_builder import PathManager, PathProcessor, SymbolProcessor
 from clangd_call_graph_builder import ClangdCallGraphExtractorWithContainer, ClangdCallGraphExtractorWithoutContainer
 from clangd_index_yaml_parser import SymbolParser
+from neo4j_manager import Neo4jManager # Import Neo4jManager
+from utils import Debugger # Import Debugger
 
 BATCH_SIZE = 500
 
@@ -37,7 +39,10 @@ def main():
     parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
+    parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
     args = parser.parse_args()
+
+    debugger = Debugger(turnon=args.debug_memory)
 
     # --- Pre-Phase: Sanitize the large YAML file --- 
     logger.info(f"Sanitizing input file: {args.index_file}")
@@ -51,7 +56,7 @@ def main():
 
         # --- Phase 0: Parse Clangd Index ---
         logger.info("\n--- Starting Phase 0: Parsing Clangd Index ---")
-        symbol_parser = SymbolParser(args.log_batch_size, nonstream_parsing=args.nonstream_parsing)
+        symbol_parser = SymbolParser(args.log_batch_size, nonstream_parsing=args.nonstream_parsing, debugger=debugger)
         symbol_parser.parse_yaml_file(clean_yaml_path)
 
         # --- Main Processing --- 
@@ -121,7 +126,8 @@ def main():
         return 0
 
     finally:
-        # --- Cleanup --- 
+        debugger.stop()
+        # --- Cleanup ---
         if 'clean_yaml_path' in locals() and os.path.exists(clean_yaml_path):
             logger.info(f"Cleaning up temporary file: {clean_yaml_path}")
             os.remove(clean_yaml_path)

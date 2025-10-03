@@ -11,6 +11,7 @@ import yaml
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import logging
+from utils import Debugger # Import Debugger
 
 logger = logging.getLogger(__name__)
 
@@ -116,18 +117,21 @@ class SymbolParser:
     """
     Parses a clangd YAML index file into an in-memory dictionary of symbols.
     """
-    def __init__(self, log_batch_size: int = 1000, nonstream_parsing: bool = False):
+    def __init__(self, log_batch_size: int = 1000, nonstream_parsing: bool = False, debugger: Optional[Debugger] = None):
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
         self.log_batch_size = log_batch_size
         self.has_container_field: bool = False
         self.nonstream_parsing = nonstream_parsing
+        self.debugger = debugger
 
     def parse_yaml_file(self, index_file_path: str):
         """Reads a YAML file and parses its content using the selected strategy."""
         logger.info(f"Reading clangd index file: {index_file_path}")
         with open(index_file_path, 'r', errors='ignore') as f:
             yaml_content = f.read()
+        if self.debugger:
+            self.debugger.memory_snapshot("Memory after reading entire YAML file into string")
         
         if self.nonstream_parsing:
             self.parse_yaml_content_nonstreaming(yaml_content)
@@ -141,6 +145,8 @@ class SymbolParser:
         """
         logger.info("Parsing YAML content (non-streaming, two-pass)...")
         documents = list(yaml.safe_load_all(yaml_content))
+        if self.debugger:
+            self.debugger.memory_snapshot("Memory after loading all YAML documents into list of Python objects (non-streaming)")
         
         # Pass 1: Collect all symbols
         logger.info("Pass 1: Parsing symbols...")
@@ -170,6 +176,8 @@ class SymbolParser:
         logger.info(f"Parsed {total_documents_parsed} YAML documents for references.")
         
         logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
+        if self.debugger:
+            self.debugger.memory_snapshot("Memory after populating self.symbols and self.functions (non-streaming)")
 
     def parse_yaml_content_streaming(self, yaml_content: str):
         """
@@ -202,6 +210,8 @@ class SymbolParser:
         logger.info(f"Processed {total_documents_processed} YAML documents.")
         
         logger.info(f"Finished parsing. Found {len(self.symbols)} symbols and {len(self.functions)} functions.")
+        if self.debugger:
+            self.debugger.memory_snapshot("Memory after populating self.symbols and self.functions (streaming)")
 
     def _parse_symbol(self, doc: dict) -> Symbol:
         """Parse a symbol from YAML document."""
