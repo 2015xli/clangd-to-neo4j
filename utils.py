@@ -34,7 +34,7 @@ class Debugger:
         print("-" * 40)
 
     def stop(self):
-        if self.turnon and tracemalloc.is_started():
+        if self.turnon and tracemalloc.is_tracing():
             tracemalloc.stop()
             logger.info("Tracemalloc stopped.")
 
