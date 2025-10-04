@@ -37,6 +37,7 @@ def main():
                         help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
+    parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
@@ -79,7 +80,12 @@ def main():
 
             # --- Phase 2: Ingest Symbol Definitions ---
             logger.info("\n--- Starting Phase 2: Ingesting Symbol Definitions ---")
-            symbol_processor = SymbolProcessor(path_manager, args.log_batch_size, args.ingest_batch_size)
+            symbol_processor = SymbolProcessor(
+                path_manager,
+                log_batch_size=args.log_batch_size,
+                ingest_batch_size=args.ingest_batch_size,
+                cypher_tx_size=args.cypher_tx_size
+            )
             symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr)
             del symbol_processor
             gc.collect()

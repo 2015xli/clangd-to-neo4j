@@ -62,6 +62,10 @@ class Neo4jManager:
                 for cypher, params in batch:
                     tx.run(cypher, **params)
 
+    def execute_autocommit_query(self, cypher: str, params: Dict) -> None:
+        with self.driver.session() as session:
+            session.run(cypher, **params)
+
     def cleanup_orphan_nodes(self) -> int:
         query = "MATCH (n) WHERE COUNT { (n)--() } = 0 DETACH DELETE n"
         with self.driver.session() as session:

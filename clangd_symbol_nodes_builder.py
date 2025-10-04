@@ -57,10 +57,11 @@ class PathManager:
 
 class SymbolProcessor:
     """Processes Symbol objects and prepares data for Neo4j operations."""
-    def __init__(self, path_manager: PathManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
+    def __init__(self, path_manager: PathManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000, cypher_tx_size: int = 500):
         self.path_manager = path_manager
         self.ingest_batch_size = ingest_batch_size
         self.log_batch_size = log_batch_size
+        self.cypher_tx_size = cypher_tx_size
     
     def process_symbol(self, sym: Symbol) -> Optional[Dict]:
         if not sym.id or not sym.kind:
@@ -167,13 +168,17 @@ class SymbolProcessor:
         logger.info(f"Creating {len(defines_data_list)} DEFINES relationships in batches...")
         for i in range(0, len(defines_data_list), self.ingest_batch_size):
             batch = defines_data_list[i:i + self.ingest_batch_size]
-            defines_rel_query = """
+            # Use CALL (data) { ... } IN TRANSACTIONS for server-side parallelism
+            # This updated syntax is required by newer Neo4j versions to avoid deprecation warnings.
+            defines_rel_query = f"""
             UNWIND $defines_data AS data
-            MATCH (f:FILE {path: data.file_path})
-            MATCH (n {id: data.id})
-            MERGE (f)-[:DEFINES]->(n)
+            CALL (data) {{
+                MATCH (f:FILE {{path: data.file_path}})
+                MATCH (n {{id: data.id}})
+                MERGE (f)-[:DEFINES]->(n)
+            }} IN TRANSACTIONS OF {self.cypher_tx_size} ROWS
             """
-            neo4j_mgr.process_batch([(defines_rel_query, {"defines_data": batch})])
+            neo4j_mgr.execute_autocommit_query(defines_rel_query, {"defines_data": batch})
             print(".", end="", flush=True)
         print(flush=True)
  
@@ -307,6 +312,7 @@ def main():
     parser.add_argument('project_path', help='Root path of the project')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes and relationships (default: 1000).')
+    parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
     args = parser.parse_args()
     
     logger.info("Pass 0: Parsing clangd index file...")
@@ -324,8 +330,13 @@ def main():
         path_processor.ingest_paths(symbol_parser.symbols)
 
         logger.info("Pass 2: Processing symbols and relationships...")
-        symbol_processor = SymbolProcessor(path_manager, args.ingest_batch_size)
-        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.log_batch_size)
+        symbol_processor = SymbolProcessor(
+            path_manager,
+            log_batch_size=args.log_batch_size,
+            ingest_batch_size=args.ingest_batch_size,
+            cypher_tx_size=args.cypher_tx_size
+        )
+        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr)
         
         del symbol_processor
         gc.collect()

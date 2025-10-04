@@ -11,6 +11,7 @@ import yaml
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import logging
+import gc
 from utils import Debugger # Import Debugger
 
 logger = logging.getLogger(__name__)
@@ -138,6 +139,10 @@ class SymbolParser:
         else:
             self.parse_yaml_content_streaming(yaml_content)
 
+        # Explicitly free memory of the raw YAML content string
+        del yaml_content
+        gc.collect()
+
     def parse_yaml_content_nonstreaming(self, yaml_content: str):
         """
         Parses the string content of a clangd index YAML using a two-pass approach.
@@ -147,6 +152,10 @@ class SymbolParser:
         documents = list(yaml.safe_load_all(yaml_content))
         if self.debugger:
             self.debugger.memory_snapshot("Memory after loading all YAML documents into list of Python objects (non-streaming)")
+
+        # Free memory from the raw YAML string as it's no longer needed
+        del yaml_content
+        gc.collect()
         
         # Pass 1: Collect all symbols
         logger.info("Pass 1: Parsing symbols...")
