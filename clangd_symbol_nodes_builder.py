@@ -152,15 +152,22 @@ class SymbolProcessor:
         logger.info(f"Creating {len(defines_data_list)} DEFINES relationships in batches...")
         for i in range(0, len(defines_data_list), self.ingest_batch_size):
             batch = defines_data_list[i:i + self.ingest_batch_size]
-            defines_rel_query = f"""
-            UNWIND $defines_data AS data
-            CALL (data) {{
-                MATCH (f:FILE {{path: data.file_path}})
-                MATCH (n {{id: data.id}})
-                MERGE (f)-[:DEFINES]->(n)
-            }} IN TRANSACTIONS OF {self.cypher_tx_size} ROWS
+            # Use apoc.periodic.iterate for server-side parallelism
+            # This requires the APOC plugin to be installed on the Neo4j server.
+            defines_rel_query = """
+            CALL apoc.periodic.iterate(
+                "UNWIND $defines_data AS data RETURN data",
+                "MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
+                {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
+            )
             """
-            neo4j_mgr.execute_autocommit_query(defines_rel_query, {"defines_data": batch})
+            neo4j_mgr.execute_autocommit_query(
+                defines_rel_query,
+                {
+                    "defines_data": batch,
+                    "cypher_tx_size": self.cypher_tx_size
+                }
+            )
             print(".", end="", flush=True)
         print(flush=True)
  
