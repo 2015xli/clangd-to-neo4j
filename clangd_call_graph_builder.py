@@ -12,13 +12,13 @@ import gc
 import os
 import argparse
 import json
+import math
 
 from tree_sitter_span_extractor import SpanExtractor
 from clangd_index_yaml_parser import (
-    SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
+    SymbolParser, ParallelSymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
-from clangd_symbol_nodes_builder import PathManager
-from neo4j_manager import Neo4jManager # Import Neo4jManager
+from neo4j_manager import Neo4jManager
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ Functions that are only called (leaf functions): {len(callees - callers)}
         logger.info(f"Preparing {total_relations} call relationships for batched ingestion (batch size: {self.ingest_batch_size}).")
 
         output_file_path = "generated_call_graph_cypher_queries.cql"
-        file_mode = 'w' # Overwrite for the first batch, append for subsequent
+        file_mode = 'w'
         
         for i in range(0, total_relations, self.ingest_batch_size):
             batch = call_relations[i:i + self.ingest_batch_size]
@@ -100,16 +100,13 @@ Functions that are only called (leaf functions): {len(callees - callers)}
             if neo4j_manager:
                 neo4j_manager.process_batch([(query_template, params)])
             else:
-                # For .cql file, write the query and then the parameters as a comment.
-                # The query_template already has UNWIND $relations, so we just need to
-                # provide the params as a comment for external tools to use.
                 formatted_query = query_template.strip()
                 formatted_params = json.dumps(params, indent=2)
                 with open(output_file_path, file_mode) as f:
-                    f.write(f"// Batch {i // self.ingest_batch_size + 1} ")
-                    f.write(f"{formatted_query} ")
-                    f.write(f"// PARAMS: {formatted_params} ")
-                file_mode = 'a' # Switch to append after the first write
+                    f.write(f"// Batch {i // self.ingest_batch_size + 1} \n")
+                    f.write(f"{formatted_query};\n")
+                    f.write(f"// PARAMS: {formatted_params}\n")
+                file_mode = 'a'
 
             print(".", end="", flush=True)
         print(flush=True)
@@ -166,9 +163,7 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         
         logger.info(f"Matched {matched_count} functions with body spans out of {len(self.symbol_parser.functions)}")
 
-        # Free memory
-        del self.function_spans_by_file
-        del spans_lookup
+        del self.function_spans_by_file, spans_lookup
         gc.collect()
 
     def load_function_spans(self, spans_file: str) -> None:
@@ -212,23 +207,14 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         self.match_function_spans()
 
     def _is_location_within_function_body(self, call_loc: Location, body_loc: RelativeLocation, body_file_uri: str) -> bool:
-        """Check if a call location is within a function's body boundaries."""
         if call_loc.file_uri != body_file_uri:
             return False
         
-        if call_loc.start_line > body_loc.start_line:
-            start_ok = True
-        elif call_loc.start_line == body_loc.start_line:
-            start_ok = call_loc.start_column >= body_loc.start_column
-        else:
-            start_ok = False
+        start_ok = (call_loc.start_line > body_loc.start_line) or \
+                   (call_loc.start_line == body_loc.start_line and call_loc.start_column >= body_loc.start_column)
         
-        if call_loc.end_line < body_loc.end_line:
-            end_ok = True
-        elif call_loc.end_line == body_loc.end_line:
-            end_ok = call_loc.end_column <= body_loc.end_column
-        else:
-            end_ok = False
+        end_ok = (call_loc.end_line < body_loc.end_line) or \
+                 (call_loc.end_line == body_loc.end_line and call_loc.end_column <= body_loc.end_column)
         
         return start_ok and end_ok
 
@@ -244,12 +230,10 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         logger.info(f"Analyzing calls for {len(functions_with_bodies)} functions with body spans using optimized lookup")
 
         file_to_function_bodies_index: Dict[str, List[Tuple[RelativeLocation, Symbol]]] = {}
-        for caller_function_id, caller_symbol in functions_with_bodies.items():
-            if caller_symbol.body_location is not None and caller_symbol.definition is not None:
+        for caller_symbol in functions_with_bodies.values():
+            if caller_symbol.body_location and caller_symbol.definition:
                 file_uri = caller_symbol.definition.file_uri
-                if file_uri not in file_to_function_bodies_index:
-                    file_to_function_bodies_index[file_uri] = []
-                file_to_function_bodies_index[file_uri].append( (caller_symbol.body_location, caller_symbol) )
+                file_to_function_bodies_index.setdefault(file_uri, []).append((caller_symbol.body_location, caller_symbol))
 
         for file_uri in file_to_function_bodies_index:
             file_to_function_bodies_index[file_uri].sort(key=lambda item: item[0].start_line)
@@ -258,70 +242,47 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         gc.collect()
 
         logger.info("Processing call relationships for callees...")
-        callees_processed = 0
-        for callee_function_id, callee_symbol in self.symbol_parser.symbols.items():
+        for callee_symbol in self.symbol_parser.symbols.values():
             if not callee_symbol.references or not callee_symbol.is_function():
                 continue
             
             for reference in callee_symbol.references:
-                if reference.kind != 12 and reference.kind != 4:
+                if reference.kind not in [4, 12]: # 4: Reference, 12: Spelled Reference
                     continue
-                call_location = reference.location
-                found_caller_symbol = None
-                if call_location.file_uri in file_to_function_bodies_index:
-                    potential_callers_in_file = file_to_function_bodies_index[call_location.file_uri]
-                    for body_loc, caller_symbol in potential_callers_in_file:
-                        if self._is_location_within_function_body(call_location, body_loc, call_location.file_uri):
-                            found_caller_symbol = caller_symbol
-                            break
                 
-                if found_caller_symbol is not None:
-                    call_relations.append(CallRelation(
-                        caller_id=found_caller_symbol.id,
-                        caller_name=found_caller_symbol.name,
-                        callee_id=callee_symbol.id,
-                        callee_name=callee_symbol.name,
-                        call_location=call_location
-                    ))
+                call_location = reference.location
+                if call_location.file_uri in file_to_function_bodies_index:
+                    for body_loc, caller_symbol in file_to_function_bodies_index[call_location.file_uri]:
+                        if self._is_location_within_function_body(call_location, body_loc, call_location.file_uri):
+                            call_relations.append(CallRelation(
+                                caller_id=caller_symbol.id,
+                                caller_name=caller_symbol.name,
+                                callee_id=callee_symbol.id,
+                                callee_name=callee_symbol.name,
+                                call_location=call_location
+                            ))
+                            break
 
-            callees_processed += 1
-            if callees_processed % self.log_batch_size == 0:
-                print(".", end="", flush=True)
-        print(flush=True)
-        logger.info(f"Processed call relationships for {callees_processed} callees.")
-        
         logger.info(f"Extracted {len(call_relations)} call relationships")
         del file_to_function_bodies_index
         gc.collect()
 
         return call_relations
     
-
 class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
-    def __init__(self, symbol_parser: SymbolParser, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
-        super().__init__(symbol_parser, log_batch_size, ingest_batch_size)
-
     def extract_call_relationships(self) -> List[CallRelation]:
         call_relations = []
         logger.info("Extracting call relationships using Container field...")
 
-        logger.info("Processing call relationships for callees...")
-        callees_processed = 0
-        for callee_function_id, callee_symbol in self.symbol_parser.symbols.items():
+        for callee_symbol in self.symbol_parser.symbols.values():
             if not callee_symbol.references or not callee_symbol.is_function():
                 continue
             
             for reference in callee_symbol.references:
-                if reference.container_id == '0000000000000000': # Skip if container is '0'
-                    continue
-                # Check for new RefKind::Call values (28 or 20) and Container field
-                if reference.container_id and (reference.kind == 28 or reference.kind == 20):
+                if reference.container_id and reference.container_id != '0000000000000000' and reference.kind in [20, 28]:
                     caller_id = reference.container_id
                     caller_symbol = self.symbol_parser.symbols.get(caller_id)
                     
-                    assert caller_symbol and caller_symbol.is_function(), \
-                        f"Container ID {caller_id} for callee {callee_symbol.id} is not a valid function symbol."
-
                     if caller_symbol and caller_symbol.is_function():
                         call_relations.append(CallRelation(
                             caller_id=caller_symbol.id,
@@ -330,75 +291,76 @@ class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
                             callee_name=callee_symbol.name,
                             call_location=reference.location
                         ))
-
-            callees_processed += 1
-            if callees_processed % self.log_batch_size == 0:
-                print(".", end="", flush=True)
-        print(flush=True)
-        logger.info(f"Processed call relationships for {callees_processed} callees.")
         
         logger.info(f"Extracted {len(call_relations)} call relationships")
         return call_relations
 
 def main():
     """Main function to demonstrate usage."""
+    try:
+        default_workers = math.ceil(os.cpu_count() / 2)
+    except (NotImplementedError, TypeError):
+        default_workers = 2
+
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
     parser.add_argument('input_file', help='Path to clangd index YAML file')
     parser.add_argument('span_path', help='Path to a pre-computed spans YAML file, or a project directory to scan')
-    parser.add_argument('--nonstream-parsing', action='store_true',
-                        help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--ingest', action='store_true', help='If set, ingest directly into Neo4j. Requires Neo4j connection details via environment variables.')
+    parser.add_argument('--ingest', action='store_true', help='If set, ingest directly into Neo4j.')
     parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
+    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
+                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
     args = parser.parse_args()
     
-    # 1. Parse the clangd index file
-    symbol_parser = SymbolParser(args.log_batch_size, args.nonstream_parsing)
-    symbol_parser.parse_yaml_file(args.input_file)
+    # --- Phase 0: Load, Parse, and Link Symbols ---
+    logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
+    if args.num_parse_workers > 1:
+        logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
+        symbol_parser = ParallelSymbolParser(
+            index_file_path=args.input_file,
+            log_batch_size=args.log_batch_size
+        )
+        symbol_parser.parse(num_workers=args.num_parse_workers)
+    else:
+        logger.info("Using standard SymbolParser in single-threaded mode.")
+        symbol_parser = SymbolParser(log_batch_size=args.log_batch_size)
+        symbol_parser.parse_yaml_file(args.input_file)
+
+    symbol_parser.build_cross_references()
+    logger.info("--- Finished Phase 0 ---")
 
     # 2. Create extractor based on available features
     if symbol_parser.has_container_field:
-        extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size)
+        extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
     else:
         extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-        # Load function spans only if needed
         if os.path.isdir(args.span_path):
             extractor.load_spans_from_project(args.span_path)
         elif os.path.isfile(args.span_path):
             extractor.load_function_spans(args.span_path)
         else:
-            logger.error(f"Span path not found or is not a valid file/directory: {args.span_path}")
+            logger.error(f"Span path not found: {args.span_path}")
             return
     
     # 3. Extract call relationships
     call_relations = extractor.extract_call_relationships()
     
-    # 4. Ingest call relationships (or write to file)
-    neo4j_mgr = None
+    # 4. Ingest or write to file
     if args.ingest:
-        neo4j_mgr = Neo4jManager()
-        with neo4j_mgr: # Use context manager for connection
-            if not neo4j_mgr.check_connection():
-                logger.error("Failed to connect to Neo4j. Aborting ingestion.")
-                return
-            extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
+        with Neo4jManager() as neo4j_mgr:
+            if neo4j_mgr.check_connection():
+                extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
     else:
         extractor.ingest_call_relations(call_relations, neo4j_manager=None)
     
-    # 5. Generate statistics (if requested)
+    # 5. Generate statistics
     if args.stats:
         stats = extractor.generate_statistics(call_relations)
         logger.info(stats)
-
-    del symbol_parser
-    del extractor
-    gc.collect()
-
-    # Removed old output logic
 
 if __name__ == "__main__":
     main()

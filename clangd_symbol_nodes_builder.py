@@ -6,6 +6,7 @@ the file, folder, and symbol nodes in a Neo4j graph.
 import os
 import sys
 import argparse
+import math
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Tuple, Optional
@@ -13,27 +14,11 @@ import logging
 import gc
 
 # New imports from the common parser module
-from clangd_index_yaml_parser import SymbolParser, Symbol, Location
-from neo4j_manager import Neo4jManager # Import Neo4jManager
+from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser, Symbol, Location
+from neo4j_manager import Neo4jManager
 
 logger = logging.getLogger(__name__)
 
-# -------------------------
-# Constants
-# -------------------------
-BATCH_SIZE = 500
-
-# -------------------------
-# Neo4j connection settings
-# -------------------------
-
-
-# -------------------------
-# Symbol processing
-# -------------------------
-# --------------------------
-# Helper classes (PathManager)
-# -------------------------
 class PathManager:
     """Manages file paths and their relationships within the project."""
     def __init__(self, project_path: str) -> None:
@@ -91,7 +76,6 @@ class SymbolProcessor:
                     symbol_data["path"] = abs_file_path
                 symbol_data["location"] = [primary_location.start_line, primary_location.start_column]
             
-        # Add file relationship data if a definition exists within the project
         if sym.definition:
             abs_file_path = unquote(urlparse(sym.definition.file_uri).path)
             if self.path_manager.is_within_project(abs_file_path):
@@ -115,7 +99,7 @@ class SymbolProcessor:
         data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
         defines_data_list = [d for d in symbol_data_list if 'file_path' in d]
 
-        del symbol_data_list # Free memory early
+        del symbol_data_list
         gc.collect()
 
         return function_data_list, data_structure_data_list, defines_data_list
@@ -168,8 +152,6 @@ class SymbolProcessor:
         logger.info(f"Creating {len(defines_data_list)} DEFINES relationships in batches...")
         for i in range(0, len(defines_data_list), self.ingest_batch_size):
             batch = defines_data_list[i:i + self.ingest_batch_size]
-            # Use CALL (data) { ... } IN TRANSACTIONS for server-side parallelism
-            # This updated syntax is required by newer Neo4j versions to avoid deprecation warnings.
             defines_rel_query = f"""
             UNWIND $defines_data AS data
             CALL (data) {{
@@ -218,7 +200,7 @@ class PathProcessor:
                 folder_data_list.append({
                     "path": folder_path,
                     "name": Path(folder_path).name,
-                    "parent_path": self.path_manager.project_path, # Use project_path as parent for root folders
+                    "parent_path": self.path_manager.project_path,
                     "is_root": True
                 })
             else:
@@ -240,7 +222,7 @@ class PathProcessor:
                 file_data_list.append({
                     "path": file_path,
                     "name": Path(file_path).name,
-                    "parent_path": self.path_manager.project_path, # Use project_path as parent for root files
+                    "parent_path": self.path_manager.project_path,
                     "is_root": True
                 })
             else:
@@ -307,17 +289,41 @@ class PathProcessor:
         print(flush=True)
 
 def main():
-    parser = argparse.ArgumentParser(description='Import Clangd index into Neo4j')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+
+    try:
+        default_workers = math.ceil(os.cpu_count() / 2)
+    except (NotImplementedError, TypeError):
+        default_workers = 1
+
+    parser = argparse.ArgumentParser(description='Import Clangd index symbols and file structure into Neo4j.')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes and relationships (default: 1000).')
     parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
+    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
+                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
     args = parser.parse_args()
     
-    logger.info("Pass 0: Parsing clangd index file...")
-    symbol_parser = SymbolParser(args.log_batch_size)
-    symbol_parser.parse_yaml_file(args.index_file)
+    # --- Phase 0: Load, Parse, and Link Symbols ---
+    logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
+
+    if args.num_parse_workers > 1:
+        logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
+        symbol_parser = ParallelSymbolParser(
+            index_file_path=args.index_file,
+            log_batch_size=args.log_batch_size
+        )
+        symbol_parser.parse(num_workers=args.num_parse_workers)
+    else:
+        logger.info("Using standard SymbolParser in single-threaded mode.")
+        symbol_parser = SymbolParser(log_batch_size=args.log_batch_size)
+        symbol_parser.parse_yaml_file(args.index_file)
+
+    symbol_parser.build_cross_references()
+    logger.info("--- Finished Phase 0 ---")
     
     path_manager = PathManager(args.project_path)
     with Neo4jManager() as neo4j_mgr:
@@ -326,10 +332,14 @@ def main():
         neo4j_mgr.create_project_node(path_manager.project_path)
         neo4j_mgr.create_constraints()
         
+        logger.info("\n--- Starting Phase 1: Ingesting File & Folder Structure ---")
         path_processor = PathProcessor(path_manager, neo4j_mgr, args.log_batch_size, args.ingest_batch_size)
         path_processor.ingest_paths(symbol_parser.symbols)
+        del path_processor
+        gc.collect()
+        logger.info("--- Finished Phase 1 ---")
 
-        logger.info("Pass 2: Processing symbols and relationships...")
+        logger.info("\n--- Starting Phase 2: Ingesting Symbol Definitions ---")
         symbol_processor = SymbolProcessor(
             path_manager,
             log_batch_size=args.log_batch_size,
@@ -341,9 +351,8 @@ def main():
         del symbol_processor
         gc.collect()
         
-        logger.info(f"Done. Processed {len(symbol_parser.symbols)} symbols with {len(symbol_parser.symbols)} total operations.")
+        logger.info(f"\n✅ Done. Processed {len(symbol_parser.symbols)} symbols.")
         return 0
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     sys.exit(main())

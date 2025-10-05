@@ -14,29 +14,33 @@ import argparse
 import sys
 import logging
 import os
-import tempfile
 import gc
+import math
 
-# Import processors from the library scripts
+# Import processors and managers from the library scripts
 from clangd_symbol_nodes_builder import PathManager, PathProcessor, SymbolProcessor
 from clangd_call_graph_builder import ClangdCallGraphExtractorWithContainer, ClangdCallGraphExtractorWithoutContainer
-from clangd_index_yaml_parser import SymbolParser
-from neo4j_manager import Neo4jManager # Import Neo4jManager
-from utils import Debugger # Import Debugger
+from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser
+from neo4j_manager import Neo4jManager
+from utils import Debugger
 
-BATCH_SIZE = 500
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
 
+    try:
+        default_workers = math.ceil(os.cpu_count() / 2)
+    except (NotImplementedError, TypeError):
+        default_workers = 1
+
     parser = argparse.ArgumentParser(description='Build a code graph from a clangd index.')
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project being indexed')
-    parser.add_argument('--nonstream-parsing', action='store_true',
-                        help='Use non-streaming (two-pass) YAML parsing for SymbolParser')
+    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
+                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
+    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes/relationships (default: 1000).')
     parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
@@ -45,20 +49,26 @@ def main():
 
     debugger = Debugger(turnon=args.debug_memory)
 
-    # --- Pre-Phase: Sanitize the large YAML file --- 
-    logger.info(f"Sanitizing input file: {args.index_file}")
     try:
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False, encoding='utf-8', errors='ignore') as temp_f:
-            with open(args.index_file, 'r', errors='ignore') as f_in:
-                for line in f_in:
-                    temp_f.write(line.replace('\t', '  '))
-            clean_yaml_path = temp_f.name
-        logger.info(f"Sanitized YAML written to temporary file: {clean_yaml_path}")
+        # --- Phase 0: Load, Parse, and Link Symbols ---
+        logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
 
-        # --- Phase 0: Parse Clangd Index ---
-        logger.info("\n--- Starting Phase 0: Parsing Clangd Index ---")
-        symbol_parser = SymbolParser(args.log_batch_size, nonstream_parsing=args.nonstream_parsing, debugger=debugger)
-        symbol_parser.parse_yaml_file(clean_yaml_path)
+        if args.num_parse_workers > 1:
+            logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
+            symbol_parser = ParallelSymbolParser(
+                index_file_path=args.index_file,
+                log_batch_size=args.log_batch_size,
+                debugger=debugger
+            )
+            symbol_parser.parse(num_workers=args.num_parse_workers)
+        else:
+            logger.info("Using standard SymbolParser in single-threaded mode.")
+            symbol_parser = SymbolParser(log_batch_size=args.log_batch_size, debugger=debugger)
+            symbol_parser.parse_yaml_file(args.index_file)
+
+        # Phase 0.5: Link all parsed data
+        symbol_parser.build_cross_references()
+        logger.info("--- Finished Phase 0 ---")
 
         # --- Main Processing --- 
         path_manager = PathManager(args.project_path)
@@ -100,20 +110,13 @@ def main():
             else:
                 extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-                # Load spans from project only if needed
                 extractor.load_spans_from_project(args.project_path)
             
             call_relations = extractor.extract_call_relationships()
-            
-            # Use the new ingest_call_relations method for batched ingestion
             extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
             
-            del extractor # Deletes the extractor and its reference to symbol_parser
+            del extractor, call_relations
             gc.collect()
-            
-            del call_relations
-            gc.collect()
-            logger.info("Call graph ingestion complete.")
             logger.info("--- Finished Phase 3 ---")
 
             # --- Phase 4: Cleanup Orphan Nodes (Optional) ---
@@ -125,18 +128,13 @@ def main():
             else:
                 logger.info("\n--- Skipping Phase 4: Keeping orphan nodes as requested ---")
 
-        del symbol_parser
-        del path_manager
+        del symbol_parser, path_manager
         gc.collect()
         logger.info("\n✅ All passes complete. Code graph ingestion finished.")
         return 0
 
     finally:
         debugger.stop()
-        # --- Cleanup ---
-        if 'clean_yaml_path' in locals() and os.path.exists(clean_yaml_path):
-            logger.info(f"Cleaning up temporary file: {clean_yaml_path}")
-            os.remove(clean_yaml_path)
 
 if __name__ == "__main__":
     sys.exit(main())
