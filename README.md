@@ -9,24 +9,24 @@ The ingestion process is orchestrated by `clangd_code_graph_builder.py` and proc
 ### Key Design Principles
 
 *   **Modular Processors**: Each stage of the ingestion is handled by a dedicated processor class.
+*   **High-Performance Parallel Parsing**: The initial, expensive parsing of the YAML index is heavily parallelized using a multi-process, chunking architecture to leverage all available CPU cores.
 *   **"Parse Once, Use Many"**: The large `clangd` index YAML file is parsed only once into an in-memory representation, which is then reused by all subsequent passes.
-*   **Memory Efficiency**: Aggressive memory management (explicit `del` and `gc.collect()`) and optimized data structures (e.g., `RelativeLocation`, streaming YAML parsing) are employed to handle large codebases like the Linux kernel.
-*   **Flexible Call Graph Extraction**: Supports both older `clangd` index formats (using `tree-sitter` for span extraction) and newer formats (leveraging the `Container` field for direct call site identification).
-*   **Batch Processing with `UNWIND`**: All Neo4j ingestion operations (nodes and relationships) utilize Cypher's `UNWIND` clause for highly efficient batch processing, minimizing network round trips.
+*   **Advanced Parallel Ingestion**: Utilizes `apoc.periodic.iterate` with sophisticated, deadlock-safe batching strategies for high-performance data ingestion into Neo4j.
+*   **Memory Efficiency**: Aggressive memory management and optimized data structures are employed to handle large codebases.
 
 ## Ingestion Pipeline Passes
 
 The `clangd_code_graph_builder.py` orchestrates the following passes:
 
-### Pass 0: Parse Clangd Index (`clangd_index_yaml_parser.py`)
+### Pass 0: Parallel Parse Clangd Index (`clangd_index_yaml_parser.py`)
 
-*   **Purpose**: Centralized parsing of the `clangd` index YAML file into an in-memory collection of `Symbol` objects.
-*   **Key Component**: `SymbolParser` class.
-*   **Features**:
-    *   Defines common data classes (`Symbol`, `Location`, `Reference`, etc.).
-    *   Supports **streaming (single-pass)** parsing by default for memory efficiency, assuming symbols appear before their references.
-    *   Provides a `--nonstream-parsing` option for robust **non-streaming (two-pass)** parsing if YAML order is not guaranteed.
-    *   Detects the presence of the `Container` field in `!Refs` documents (clangd 21.x+) to enable optimized call graph extraction.
+*   **Purpose**: To parse the massive `clangd` index YAML file into an in-memory collection of `Symbol` objects as quickly as possible.
+*   **Key Component**: `ParallelSymbolParser` and `SymbolParser` classes.
+*   **Algorithm**: For large codebases, parsing the YAML file is a major bottleneck. This pipeline uses a sophisticated multi-process approach by default (controlled by `--num-parse-workers`):
+    1.  **Chunking**: The main process first scans the file to determine the number of YAML documents and divides the file into large, in-memory string chunks.
+    2.  **Parallel Parsing**: It then uses a `ProcessPoolExecutor` to send these raw string chunks to separate worker processes.
+    3.  **Map-Reduce**: Each worker process parses its chunk of YAML into `Symbol` objects and raw `Reference` documents.
+    4.  **Merge & Link**: The main process gathers the results from all workers and merges them. Finally, it performs a sequential pass to link all the references to their corresponding symbols, creating a complete and consistent in-memory view of the index.
 
 ### Pass 1: Ingest File & Folder Structure (`clangd_symbol_nodes_builder.py` - `PathProcessor`)
 
@@ -35,45 +35,67 @@ The `clangd_code_graph_builder.py` orchestrates the following passes:
 *   **Features**:
     *   Discovers paths by iterating over the in-memory `Symbol` objects from Pass 0.
     *   Uses `UNWIND`-based batch processing for efficient creation of folder and file nodes, and their `CONTAINS` relationships.
-    *   Simplified Cypher queries for relationships, leveraging the pre-creation of the `PROJECT` node.
 
 ### Pass 2: Ingest Symbol Definitions (`clangd_symbol_nodes_builder.py` - `SymbolProcessor`)
 
-*   **Purpose**: Creates nodes for logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) and their `DEFINES` relationships to files.
+*   **Purpose**: Creates nodes for logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) and their `:DEFINES` relationships to files.
 *   **Key Component**: `SymbolProcessor` class.
 *   **Features**:
     *   Processes typed `Symbol` objects from Pass 0.
-    *   Uses `UNWIND`-based batch processing for efficient creation of symbol nodes and their `DEFINES` relationships.
+    *   Uses `UNWIND`-based batch processing for efficient creation of symbol nodes.
+    *   Employs two distinct, highly-tuned strategies for relationship ingestion to balance speed and correctness (see Performance Tuning section below).
 
 ### Pass 3: Ingest Call Graph (`clangd_call_graph_builder.py`)
 
 *   **Purpose**: Identifies and ingests function call relationships (`-[:CALLS]->`) into Neo4j.
-*   **Key Components**: `BaseClangdCallGraphExtractor`, `ClangdCallGraphExtractorWithContainer`, `ClangdCallGraphExtractorWithoutContainer`.
 *   **Features**:
     *   **Adaptive Strategy**: Automatically selects the most efficient call graph extraction method based on whether the `Container` field is detected in the `clangd` index.
-    *   **`WithContainer` Strategy (New Format)**: Directly uses the `Container` field from `!Refs` documents for highly efficient call graph extraction, bypassing `tree-sitter`. Includes validation for caller symbols.
-    *   **`WithoutContainer` Strategy (Legacy Format)**: Falls back to `tree-sitter` based span extraction and spatial lookup for older index formats.
-    *   Uses `UNWIND` for efficient ingestion of `CALLS` relationships.
 
 ### Pass 4: Cleanup Orphan Nodes
 
 *   **Purpose**: Removes any nodes that were created but ended up without any relationships, ensuring a clean graph.
-*   **Features**: Uses an `UNWIND`-compatible Cypher query for efficient cleanup.
+*   **Features**: This optional step can be skipped with the `--keep-orphans` flag.
 
 ## Usage
 
-To run the ingestion pipeline:
-
 ```bash
-python3 clangd_code_graph_builder.py <path_to_clangd_index.yaml> <path_to_project_root> [options]
+# Example with default (fast, non-idempotent) settings on a multi-core machine
+python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/>
+
+# Example using the deadlock-safe, idempotent MERGE strategy
+python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --idempotent-merge
 ```
 
-**Options:**
+**All Options:**
+*   `--num-parse-workers <int>`: Number of parallel workers for parsing the YAML index. Defaults to half the CPU cores. Set to `1` to disable parallel parsing.
+*   `--idempotent-merge`: Use the safe but slower `MERGE` strategy for relationships. Recommended if you are not starting with a clean database.
+*   `--cypher-tx-size <int>`: Target number of items (nodes/relationships) per server-side transaction. Default: `2000`.
+*   `--ingest-batch-size <int>`: Target number of items per client-side submission. Controls progress indicator frequency and the amount of work submitted at once. Defaults to `(cypher-tx-size * num-parse-workers)`.
 *   `--log-batch-size <int>`: Log progress every N items (default: 1000).
 *   `--keep-orphans`: Skip Pass 4 and keep orphan nodes in the graph.
-*   `--nonstream-parsing`: Use non-streaming (two-pass) YAML parsing for the `SymbolParser`. (Default is streaming for memory efficiency).
 
-## Development Notes
+## Performance Tuning & Ingestion Strategy
 
-*   **Memory Management**: Explicit `del` statements and `gc.collect()` calls are strategically placed throughout the pipeline to manage memory aggressively, crucial for large codebases.
-*   **Error Handling**: Robust error handling is implemented for Neo4j operations and file parsing.
+This pipeline has been highly optimized for both speed and correctness, particularly regarding the creation of `:DEFINES` relationships.
+
+### The Concurrency Problem: Deadlocks
+
+When ingesting millions of relationships in parallel, a common problem is database deadlocks. This happens when two parallel database transactions try to acquire locks on the same nodes (e.g., the same `:FILE` node) in a conflicting order. The database aborts one transaction to resolve the deadlock, resulting in an incomplete graph where some relationships are silently dropped. Our investigation confirmed this was happening with a naive parallel `MERGE` approach.
+
+To solve this, the pipeline offers two distinct strategies for relationship ingestion, controlled by the `--idempotent-merge` flag.
+
+### Strategy 1: Fast, Non-Idempotent `CREATE` (Default)
+
+-   **When it's used**: By default, or when `--idempotent-merge` is NOT specified.
+-   **Algorithm**: This strategy prioritizes maximum speed. It uses the `CREATE` Cypher clause, which has simpler locking behavior and avoids the specific type of deadlocks encountered with `MERGE`. 
+-   **Trade-off**: This method is **not idempotent**. It assumes the database is empty. If run on a graph that already contains data, it will create duplicate relationships. This is the default because the main pipeline scripts always reset the database, making this a safe and fast choice for the primary use case.
+
+### Strategy 2: Deadlock-Safe, Idempotent `MERGE` (Recommended for existing DBs)
+
+-   **When it's used**: When the `--idempotent-merge` flag is specified.
+-   **Algorithm**: This strategy prioritizes correctness and idempotency. It uses a sophisticated, two-level batching system to prevent deadlocks while still leveraging parallelism.
+    1.  **File-based Grouping**: First, all `:DEFINES` relationships are grouped by the file they belong to.
+    2.  **Two-Level Batching**: The script then uses a clever batching model:
+        *   **Client Batch (`--ingest-batch-size`)**: The script creates a "query batch" of file-groups to submit to the database. This allows for a client-side progress indicator and controls how much data is sent over the network at once.
+        *   **Server Batch (`--cypher-tx-size`)**: Each query batch is processed by `apoc.periodic.iterate`. The `batchSize` for this procedure is dynamically calculated based on `--cypher-tx-size` and the average number of relationships per file. This ensures the server-side transactions are well-sized and predictable.
+    3.  **Deadlock Avoidance**: The key to this design is that the `apoc` procedure parallelizes the processing of *file-groups*. Since all relationships for `fileA.c` are in one group and all for `fileB.c` are in another, the database's parallel workers never operate on the same `:FILE` node at the same time. This **completely eliminates the cause of the deadlocks** while still allowing for high performance.

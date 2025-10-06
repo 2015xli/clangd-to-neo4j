@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 from typing import List, Dict, Any, Tuple, Optional
+from collections import defaultdict
 import logging
 import gc
 
@@ -61,21 +62,26 @@ class SymbolProcessor:
             "has_definition": sym.definition is not None,
         }
 
+        # Set primary display location for all symbols, not just functions
+        primary_location = sym.definition or sym.declaration
+        if primary_location:
+            abs_file_path = unquote(urlparse(primary_location.file_uri).path)
+            if self.path_manager.is_within_project(abs_file_path):
+                symbol_data["path"] = self.path_manager.uri_to_relative_path(primary_location.file_uri)
+            else:
+                # For out-of-project symbols, store the absolute path
+                symbol_data["path"] = abs_file_path
+            symbol_data["location"] = [primary_location.start_line, primary_location.start_column]
+
+        # Add function-specific properties
         if sym.kind == "Function":
             symbol_data.update({
                 "signature": sym.signature,
                 "return_type": sym.return_type,
                 "type": sym.type,
             })
-            primary_location = sym.definition or sym.declaration
-            if primary_location:
-                abs_file_path = unquote(urlparse(primary_location.file_uri).path)
-                if self.path_manager.is_within_project(abs_file_path):
-                    symbol_data["path"] = self.path_manager.uri_to_relative_path(primary_location.file_uri)
-                else:
-                    symbol_data["path"] = abs_file_path
-                symbol_data["location"] = [primary_location.start_line, primary_location.start_column]
             
+        # Set file_path for creating DEFINES relationships (in-project only)
         if sym.definition:
             abs_file_path = unquote(urlparse(sym.definition.file_uri).path)
             if self.path_manager.is_within_project(abs_file_path):
@@ -104,12 +110,18 @@ class SymbolProcessor:
 
         return function_data_list, data_structure_data_list, defines_data_list
 
-    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager):
+    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, idempotent_merge: bool = False):
         function_data_list, data_structure_data_list, defines_data_list = self._process_and_filter_symbols(symbols)
 
         self._ingest_function_nodes(function_data_list, neo4j_mgr)
         self._ingest_data_structure_nodes(data_structure_data_list, neo4j_mgr)
-        self._ingest_defines_relationships(defines_data_list, neo4j_mgr)
+
+        if idempotent_merge:
+            logger.info("Using idempotent MERGE for DEFINES relationships with file-based grouping.")
+            self._ingest_defines_relationships_merge(defines_data_list, neo4j_mgr)
+        else:
+            logger.info("Using non-idempotent CREATE for DEFINES relationships. This is fast but assumes a clean database.")
+            self._ingest_defines_relationships_create(defines_data_list, neo4j_mgr)
 
         del function_data_list, data_structure_data_list, defines_data_list
         gc.collect()
@@ -146,31 +158,92 @@ class SymbolProcessor:
             print(".", end="", flush=True)
         print(flush=True)
 
-    def _ingest_defines_relationships(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
+    def _get_defines_stats(self, defines_data_list: List[Dict]) -> str:
+        from collections import Counter
+        kind_counts = Counter(d.get('kind', 'Unknown') for d in defines_data_list)
+        return ", ".join(f"{kind}: {count}" for kind, count in sorted(kind_counts.items()))
+
+    def _ingest_defines_relationships_create(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_data_list:
             return
-        logger.info(f"Creating {len(defines_data_list)} DEFINES relationships in batches...")
+
+        logger.info(
+            f"Found {len(defines_data_list)} potential DEFINES relationships. "
+            f"Breakdown by kind: {self._get_defines_stats(defines_data_list)}"
+        )
+        logger.info("Creating relationships in batches using non-idempotent CREATE...")
+
         for i in range(0, len(defines_data_list), self.ingest_batch_size):
             batch = defines_data_list[i:i + self.ingest_batch_size]
-            # Use apoc.periodic.iterate for server-side parallelism
-            # This requires the APOC plugin to be installed on the Neo4j server.
+            # This version uses CREATE. It is NOT idempotent and is only safe on a clean DB.
+            # It is, however, faster and avoids MERGE deadlocks under parallel execution.
             defines_rel_query = """
             CALL apoc.periodic.iterate(
                 "UNWIND $defines_data AS data RETURN data",
-                "MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
+                "MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
                 {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
             )
             """
             neo4j_mgr.execute_autocommit_query(
                 defines_rel_query,
-                {
-                    "defines_data": batch,
-                    "cypher_tx_size": self.cypher_tx_size
-                }
+                {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
             )
             print(".", end="", flush=True)
         print(flush=True)
- 
+
+    def _ingest_defines_relationships_merge(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not defines_data_list:
+            return
+
+        logger.info(
+            f"Found {len(defines_data_list)} potential DEFINES relationships. "
+            f"Breakdown by kind: {self._get_defines_stats(defines_data_list)}"
+        )
+        
+        logger.info("Grouping relationships by file for deadlock-safe parallel ingestion...")
+        grouped_by_file = defaultdict(list)
+        for item in defines_data_list:
+            if 'file_path' in item:
+                grouped_by_file[item['file_path']].append(item)
+
+        list_of_groups = list(grouped_by_file.values())
+        if not list_of_groups:
+            return
+
+        # Advanced tuning: Adjust batch sizes based on average group size.
+        num_groups = len(list_of_groups)
+        avg_group_size = len(defines_data_list) / num_groups if num_groups > 0 else 1
+        safe_avg_group_size = max(1, avg_group_size)
+
+        # Calculate batch sizes in terms of number of file-groups
+        num_groups_per_tx = math.ceil(self.cypher_tx_size / safe_avg_group_size)
+        num_groups_per_query = math.ceil(self.ingest_batch_size / safe_avg_group_size)
+        
+        final_groups_per_tx = max(1, num_groups_per_tx)
+        final_groups_per_query = max(1, num_groups_per_query)
+
+        logger.info(f"Avg rels/file: {avg_group_size:.2f}. Targeting ~{self.ingest_batch_size} rels/submission and ~{self.cypher_tx_size} rels/tx.")
+        logger.info(f"Submitting {final_groups_per_query} file-groups per query, with {final_groups_per_tx} file-groups per server tx.")
+
+        # Loop through client-side batches of file-groups
+        for i in range(0, len(list_of_groups), final_groups_per_query):
+            query_batch = list_of_groups[i:i + final_groups_per_query]
+
+            defines_rel_query = """
+            CALL apoc.periodic.iterate(
+                "UNWIND $groups AS group RETURN group",
+                "UNWIND group AS data MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
+                { batchSize: $batch_size, parallel: true, params: { groups: $groups } }
+            )
+            """
+            neo4j_mgr.execute_autocommit_query(
+                defines_rel_query,
+                {"groups": query_batch, "batch_size": final_groups_per_tx}
+            )
+            print(".", end="", flush=True)
+        print(flush=True)
+        logger.info("Finished relationship ingestion.")
+
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
     def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
@@ -308,12 +381,18 @@ def main():
     parser.add_argument('index_file', help='Path to the clangd index YAML file')
     parser.add_argument('project_path', help='Root path of the project')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes and relationships (default: 1000).')
-    parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
+    parser.add_argument('--cypher-tx-size', type=int, default=2000, help='Target relationships per server-side transaction (default: 2000).')
+    parser.add_argument('--ingest-batch-size', type=int, default=None, 
+                        help='Target relationships per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
+    parser.add_argument('--idempotent-merge', action='store_true', help='Use slower, idempotent MERGE for relationships. Default is fast, non-idempotent CREATE.')
     args = parser.parse_args()
     
+    # Set default for ingest_batch_size if not provided
+    if args.ingest_batch_size is None:
+        args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
+
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
 
@@ -353,7 +432,7 @@ def main():
             ingest_batch_size=args.ingest_batch_size,
             cypher_tx_size=args.cypher_tx_size
         )
-        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr)
+        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.idempotent_merge)
         
         del symbol_processor
         gc.collect()

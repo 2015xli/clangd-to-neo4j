@@ -40,12 +40,19 @@ def main():
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting nodes/relationships (default: 1000).')
-    parser.add_argument('--cypher-tx-size', type=int, default=500, help='Batch size for server-side Cypher transactions (default: 500).')
+    parser.add_argument('--cypher-tx-size', type=int, default=2000, 
+                        help='Target items (nodes/relationships) per server-side transaction (default: 2000).')
+    parser.add_argument('--ingest-batch-size', type=int, default=None, 
+                        help='Target items (nodes/relationships) per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
+    parser.add_argument('--idempotent-merge', action='store_true', help='Use slower, idempotent MERGE for relationships. Default is fast, non-idempotent CREATE.')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
     args = parser.parse_args()
+
+    # Set default for ingest_batch_size if not provided
+    if args.ingest_batch_size is None:
+        args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
 
     debugger = Debugger(turnon=args.debug_memory)
 
@@ -96,7 +103,7 @@ def main():
                 ingest_batch_size=args.ingest_batch_size,
                 cypher_tx_size=args.cypher_tx_size
             )
-            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr)
+            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.idempotent_merge)
             del symbol_processor
             gc.collect()
             logger.info("--- Finished Phase 2 ---")
