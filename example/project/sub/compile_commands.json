@@ -1,0 +1,23 @@
+[
+    {
+        "arguments": [
+            "clang",
+            "-c",
+            "-std=c99",
+            "sub/purchase.c"
+        ],
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "file": "sub/purchase.c"
+    },
+    {
+        "arguments": [
+            "clang",
+            "-c",
+            "-std=c99",
+            "sub/pos.c"
+        ],
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "file": "sub/pos.c"
+    }
+]
+

@@ -1,0 +1,103 @@
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/sub/purchase.c
+Functions:
+- Name: purchaseInsert
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 23
+      Column: 5
+    End:
+      Line: 23
+      Column: 19
+  BodyLocation:
+    Start:
+      Line: 23
+      Column: 119
+    End:
+      Line: 34
+      Column: 1
+- Name: purchaseSelectById
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 4
+      Column: 0
+    End:
+      Line: 4
+      Column: 18
+  BodyLocation:
+    Start:
+      Line: 5
+      Column: 58
+    End:
+      Line: 21
+      Column: 1
+
+--- !FileFunctionSpans
+FileURI: file:///home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project/sub/pos.c
+Functions:
+- Name: cashierInterfaceResult
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 279
+      Column: 5
+    End:
+      Line: 279
+      Column: 27
+  BodyLocation:
+    Start:
+      Line: 279
+      Column: 43
+    End:
+      Line: 411
+      Column: 1
+- Name: cashierInterfaceDiscount
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 183
+      Column: 5
+    End:
+      Line: 183
+      Column: 29
+  BodyLocation:
+    Start:
+      Line: 183
+      Column: 46
+    End:
+      Line: 277
+      Column: 1
+- Name: cashierInterfaceInventory
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 76
+      Column: 5
+    End:
+      Line: 76
+      Column: 30
+  BodyLocation:
+    Start:
+      Line: 76
+      Column: 45
+    End:
+      Line: 181
+      Column: 1
+- Name: cashierInterface
+  Kind: Function
+  NameLocation:
+    Start:
+      Line: 15
+      Column: 5
+    End:
+      Line: 15
+      Column: 21
+  BodyLocation:
+    Start:
+      Line: 15
+      Column: 47
+    End:
+      Line: 74
+      Column: 1
