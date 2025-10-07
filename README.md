@@ -68,7 +68,7 @@ This pipeline runs *after* the main ingestion process to enrich the code graph w
 *   **Pass 3: File and Folder "Roll-Up" Summaries**: Aggregates function summaries to create higher-level summaries for files, folders, and the entire project.
 *   **Pass 4: Embedding Generation**: Creates vector embeddings for all generated summaries, enabling semantic search within the graph.
 
-## Usage
+## Usage (`clangd_code_graph_builder.py`)
 
 ```bash
 # Example with default (fast, non-idempotent) settings on a multi-core machine
@@ -86,9 +86,9 @@ python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --i
 *   `--log-batch-size <int>`: Log progress every N items (default: 1000).
 *   `--keep-orphans`: Skip Pass 4 and keep orphan nodes in the graph.
 
-### `neo4j_manager.py` CLI Tool
+### `neo4j_manager.py` CLI Tool and Library
 
-The `neo4j_manager.py` script provides command-line utilities for managing the Neo4j database, including schema inspection and property deletion.
+The `neo4j_manager.py` script serves as both a command-line utility for managing the Neo4j database (schema inspection, property deletion) and a library module providing the core interface for other parts of the ingestion pipeline to interact with Neo4j.
 
 #### `dump_schema`
 
