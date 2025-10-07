@@ -89,7 +89,7 @@ class SymbolProcessor:
         
         return symbol_data
 
-    def _process_and_filter_symbols(self, symbols: Dict[str, Symbol]) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+    def _process_and_filter_symbols(self, symbols: Dict[str, Symbol]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
         symbol_data_list = []
         logger.info("Processing symbols for ingestion...")
         for i, sym in enumerate(symbols.values()):
@@ -103,27 +103,37 @@ class SymbolProcessor:
         
         function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
         data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
-        defines_data_list = [d for d in symbol_data_list if 'file_path' in d]
+        
+        # Filter defines_data_list to only include FUNCTION and DATA_STRUCTURE for relationship creation
+        # Derived from already filtered lists for efficiency
+        defines_function_list = [d for d in function_data_list if 'file_path' in d]
+        defines_data_structure_list = [d for d in data_structure_data_list if 'file_path' in d]
 
         del symbol_data_list
         gc.collect()
 
-        return function_data_list, data_structure_data_list, defines_data_list
+        return function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list
 
-    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, idempotent_merge: bool = False):
-        function_data_list, data_structure_data_list, defines_data_list = self._process_and_filter_symbols(symbols)
+    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, defines_generation_strategy: str = "parallel-create"):
+        function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list = self._process_and_filter_symbols(symbols)
 
         self._ingest_function_nodes(function_data_list, neo4j_mgr)
         self._ingest_data_structure_nodes(data_structure_data_list, neo4j_mgr)
 
-        if idempotent_merge:
-            logger.info("Using idempotent MERGE for DEFINES relationships with file-based grouping.")
-            self._ingest_defines_relationships_merge(defines_data_list, neo4j_mgr)
+        if defines_generation_strategy == "unwind-create":
+            logger.info("Using experimental direct UNWIND CREATE for DEFINES relationships.")
+            self._ingest_defines_relationships_unwind_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
+        elif defines_generation_strategy == "parallel-merge":
+            logger.info("Using parallel MERGE for DEFINES relationships with file-based grouping.")
+            self._ingest_defines_relationships_merge(defines_function_list, defines_data_structure_list, neo4j_mgr)
+        elif defines_generation_strategy == "parallel-create":
+            logger.info("Using parallel CREATE for DEFINES relationships. This is fast but assumes a clean database.")
+            self._ingest_defines_relationships_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
         else:
-            logger.info("Using non-idempotent CREATE for DEFINES relationships. This is fast but assumes a clean database.")
-            self._ingest_defines_relationships_create(defines_data_list, neo4j_mgr)
+            logger.error(f"Unknown defines generation strategy: {defines_generation_strategy}. Defaulting to parallel-create.")
+            self._ingest_defines_relationships_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
 
-        del function_data_list, data_structure_data_list, defines_data_list
+        del function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list
         gc.collect()
 
     def _ingest_function_nodes(self, function_data_list: List[Dict], neo4j_mgr: Neo4jManager):
@@ -158,82 +168,117 @@ class SymbolProcessor:
             print(".", end="", flush=True)
         print(flush=True)
 
-    def _get_defines_stats(self, defines_data_list: List[Dict]) -> str:
+    def _get_defines_stats(self, defines_list: List[Dict]) -> str:
         from collections import Counter
-        kind_counts = Counter(d.get('kind', 'Unknown') for d in defines_data_list)
+        kind_counts = Counter(d.get('kind', 'Unknown') for d in defines_list)
         return ", ".join(f"{kind}: {count}" for kind, count in sorted(kind_counts.items()))
 
-    def _ingest_defines_relationships_create(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
-        if not defines_data_list:
+    def _ingest_defines_relationships_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not defines_function_list and not defines_data_structure_list:
             return
 
         logger.info(
-            f"Found {len(defines_data_list)} potential DEFINES relationships. "
-            f"Breakdown by kind: {self._get_defines_stats(defines_data_list)}"
+            f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
+            f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
         )
         logger.info("Creating relationships in batches using non-idempotent CREATE...")
 
-        for i in range(0, len(defines_data_list), self.ingest_batch_size):
-            batch = defines_data_list[i:i + self.ingest_batch_size]
-            # This version uses CREATE. It is NOT idempotent and is only safe on a clean DB.
-            # It is, however, faster and avoids MERGE deadlocks under parallel execution.
-            defines_rel_query = """
-            CALL apoc.periodic.iterate(
-                "UNWIND $defines_data AS data RETURN data",
-                "MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
-                {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
-            )
-            """
-            neo4j_mgr.execute_autocommit_query(
-                defines_rel_query,
-                {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
-            )
-            print(".", end="", flush=True)
-        print(flush=True)
+        # Ingest FUNCTION DEFINES relationships
+        if defines_function_list:
+            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
+            for i in range(0, len(defines_function_list), self.ingest_batch_size):
+                batch = defines_function_list[i:i + self.ingest_batch_size]
+                defines_rel_query = """
+                CALL apoc.periodic.iterate(
+                    "UNWIND $defines_data AS data RETURN data",
+                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:FUNCTION {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
+                    {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
+                )
+                """
+                neo4j_mgr.execute_autocommit_query(
+                    defines_rel_query,
+                    {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
+                )
+                print(".", end="", flush=True)
+            print(flush=True)
 
-    def _ingest_defines_relationships_merge(self, defines_data_list: List[Dict], neo4j_mgr: Neo4jManager):
-        if not defines_data_list:
+        # Ingest DATA_STRUCTURE DEFINES relationships
+        if defines_data_structure_list:
+            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
+            for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
+                batch = defines_data_structure_list[i:i + self.ingest_batch_size]
+                defines_rel_query = """
+                CALL apoc.periodic.iterate(
+                    "UNWIND $defines_data AS data RETURN data",
+                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:DATA_STRUCTURE {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
+                    {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
+                )
+                """
+                neo4j_mgr.execute_autocommit_query(
+                    defines_rel_query,
+                    {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
+                )
+                print(".", end="", flush=True)
+            print(flush=True)
+
+    def _ingest_defines_relationships_merge(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not defines_function_list and not defines_data_structure_list:
             return
 
         logger.info(
-            f"Found {len(defines_data_list)} potential DEFINES relationships. "
-            f"Breakdown by kind: {self._get_defines_stats(defines_data_list)}"
+            f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
+            f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
         )
         
         logger.info("Grouping relationships by file for deadlock-safe parallel ingestion...")
-        grouped_by_file = defaultdict(list)
-        for item in defines_data_list:
-            if 'file_path' in item:
-                grouped_by_file[item['file_path']].append(item)
 
+        # Process FUNCTION DEFINES relationships
+        if defines_function_list:
+            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
+            grouped_by_file_functions = defaultdict(list)
+            for item in defines_function_list:
+                if 'file_path' in item:
+                    grouped_by_file_functions[item['file_path']].append(item)
+            self._process_grouped_defines_merge(grouped_by_file_functions, neo4j_mgr, ":FUNCTION")
+
+        # Process DATA_STRUCTURE DEFINES relationships
+        if defines_data_structure_list:
+            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
+            grouped_by_file_datastructures = defaultdict(list)
+            for item in defines_data_structure_list:
+                if 'file_path' in item:
+                    grouped_by_file_datastructures[item['file_path']].append(item)
+            self._process_grouped_defines_merge(grouped_by_file_datastructures, neo4j_mgr, ":DATA_STRUCTURE")
+
+        logger.info("Finished relationship ingestion.")
+
+    def _process_grouped_defines_merge(self, grouped_by_file: Dict[str, List[Dict]], neo4j_mgr: Neo4jManager, node_label_filter: str):
         list_of_groups = list(grouped_by_file.values())
         if not list_of_groups:
             return
 
-        # Advanced tuning: Adjust batch sizes based on average group size.
+        total_rels = sum(len(group) for group in list_of_groups)
         num_groups = len(list_of_groups)
-        avg_group_size = len(defines_data_list) / num_groups if num_groups > 0 else 1
+        avg_group_size = total_rels / num_groups if num_groups > 0 else 1
         safe_avg_group_size = max(1, avg_group_size)
 
-        # Calculate batch sizes in terms of number of file-groups
         num_groups_per_tx = math.ceil(self.cypher_tx_size / safe_avg_group_size)
         num_groups_per_query = math.ceil(self.ingest_batch_size / safe_avg_group_size)
         
         final_groups_per_tx = max(1, num_groups_per_tx)
         final_groups_per_query = max(1, num_groups_per_query)
 
-        logger.info(f"Avg rels/file: {avg_group_size:.2f}. Targeting ~{self.ingest_batch_size} rels/submission and ~{self.cypher_tx_size} rels/tx.")
-        logger.info(f"Submitting {final_groups_per_query} file-groups per query, with {final_groups_per_tx} file-groups per server tx.")
+        logger.info(f"  Avg rels/file: {avg_group_size:.2f}. Targeting ~{self.ingest_batch_size} rels/submission and ~{self.cypher_tx_size} rels/tx.")
+        logger.info(f"  Submitting {final_groups_per_query} file-groups per query, with {final_groups_per_tx} file-groups per server tx.")
 
-        # Loop through client-side batches of file-groups
         for i in range(0, len(list_of_groups), final_groups_per_query):
             query_batch = list_of_groups[i:i + final_groups_per_query]
 
-            defines_rel_query = """
+            defines_rel_query = f"""
             CALL apoc.periodic.iterate(
                 "UNWIND $groups AS group RETURN group",
-                "UNWIND group AS data MATCH (f:FILE {path: data.file_path}) MATCH (n {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
-                { batchSize: $batch_size, parallel: true, params: { groups: $groups } }
+                "UNWIND group AS data MATCH (f:FILE {{path: data.file_path}}) MATCH (n{node_label_filter} {{id: data.id}}) MERGE (f)-[:DEFINES]->(n)",
+                {{ batchSize: $batch_size, parallel: true, params: {{ groups: $groups }} }}
             )
             """
             neo4j_mgr.execute_autocommit_query(
@@ -242,7 +287,53 @@ class SymbolProcessor:
             )
             print(".", end="", flush=True)
         print(flush=True)
-        logger.info("Finished relationship ingestion.")
+
+    def _ingest_defines_relationships_unwind_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+        if not defines_function_list and not defines_data_structure_list:
+            return
+
+        logger.info(
+            f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
+            f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
+        )
+        logger.info("Creating relationships in batches using direct UNWIND CREATE (experimental)...")
+
+        # Ingest FUNCTION DEFINES relationships
+        if defines_function_list:
+            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
+            for i in range(0, len(defines_function_list), self.ingest_batch_size):
+                batch = defines_function_list[i:i + self.ingest_batch_size]
+                defines_rel_query = """
+                UNWIND $defines_data AS data
+                MATCH (f:FILE {path: data.file_path})
+                MATCH (n:FUNCTION {id: data.id})
+                CREATE (f)-[:DEFINES]->(n)
+                """
+                neo4j_mgr.execute_autocommit_query(
+                    defines_rel_query,
+                    {"defines_data": batch}
+                )
+                print(".", end="", flush=True)
+            print(flush=True)
+
+        # Ingest DATA_STRUCTURE DEFINES relationships
+        if defines_data_structure_list:
+            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
+            for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
+                batch = defines_data_structure_list[i:i + self.ingest_batch_size]
+                defines_rel_query = """
+                UNWIND $defines_data AS data
+                MATCH (f:FILE {path: data.file_path})
+                MATCH (n:DATA_STRUCTURE {id: data.id})
+                CREATE (f)-[:DEFINES]->(n)
+                """
+                neo4j_mgr.execute_autocommit_query(
+                    defines_rel_query,
+                    {"defines_data": batch}
+                )
+                print(".", end="", flush=True)
+            print(flush=True)
+        logger.info("Finished relationship ingestion (experimental UNWIND CREATE).")
 
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
@@ -386,7 +477,8 @@ def main():
                         help='Target relationships per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
-    parser.add_argument('--idempotent-merge', action='store_true', help='Use slower, idempotent MERGE for relationships. Default is fast, non-idempotent CREATE.')
+    parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-create',
+                        help='Strategy for ingesting DEFINES relationships. (default: parallel-create)')
     args = parser.parse_args()
     
     # Set default for ingest_batch_size if not provided
@@ -432,7 +524,7 @@ def main():
             ingest_batch_size=args.ingest_batch_size,
             cypher_tx_size=args.cypher_tx_size
         )
-        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.idempotent_merge)
+        symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.defines_generation)
         
         del symbol_processor
         gc.collect()

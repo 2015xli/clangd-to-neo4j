@@ -44,7 +44,8 @@ def main():
                         help='Target items (nodes/relationships) per server-side transaction (default: 2000).')
     parser.add_argument('--ingest-batch-size', type=int, default=None, 
                         help='Target items (nodes/relationships) per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
-    parser.add_argument('--idempotent-merge', action='store_true', help='Use slower, idempotent MERGE for relationships. Default is fast, non-idempotent CREATE.')
+    parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-create',
+                        help='Strategy for ingesting DEFINES relationships. (default: parallel-create)')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
@@ -103,7 +104,7 @@ def main():
                 ingest_batch_size=args.ingest_batch_size,
                 cypher_tx_size=args.cypher_tx_size
             )
-            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.idempotent_merge)
+            symbol_processor.ingest_symbols_and_relationships(symbol_parser.symbols, neo4j_mgr, args.defines_generation)
             del symbol_processor
             gc.collect()
             logger.info("--- Finished Phase 2 ---")

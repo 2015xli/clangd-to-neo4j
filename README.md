@@ -71,16 +71,22 @@ This pipeline runs *after* the main ingestion process to enrich the code graph w
 ## Usage (`clangd_code_graph_builder.py`)
 
 ```bash
-# Example with default (fast, non-idempotent) settings on a multi-core machine
+# Example with default (fast, parallel-create) settings on a multi-core machine
 python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/>
 
-# Example using the deadlock-safe, idempotent MERGE strategy
-python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --idempotent-merge
+# Example using the deadlock-safe, parallel-merge strategy
+python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --defines-generation parallel-merge
+
+# Example using the unwind-create strategy
+python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --defines-generation unwind-create
 ```
 
 **All Options for `clangd_code_graph_builder.py`:**
 *   `--num-parse-workers <int>`: Number of parallel workers for parsing the YAML index. Defaults to half the CPU cores. Set to `1` to disable parallel parsing.
-*   `--idempotent-merge`: Use the safe but slower `MERGE` strategy for relationships. Recommended if you are not starting with a clean database.
+*   `--defines-generation <strategy>`: Strategy for ingesting `:DEFINES` relationships. Choices: `unwind-create`, `parallel-merge`, `parallel-create`. Default: `parallel-create`.
+    *   `parallel-create`: (Default) Uses `apoc.periodic.iterate` with `CREATE`. Fast but non-idempotent. Empirically found to be the fastest for large projects.
+    *   `parallel-merge`: Uses `apoc.periodic.iterate` with `MERGE`. Idempotent and deadlock-safe, but slightly slower than `parallel-create`.
+    *   `unwind-create`: Uses direct `UNWIND` with `CREATE`. Now highly performant due to recent optimizations.
 *   `--cypher-tx-size <int>`: Target number of items (nodes/relationships) per server-side transaction. Default: `2000`.
 *   `--ingest-batch-size <int>`: Target number of items per client-side submission. Controls progress indicator frequency and the amount of work submitted at once. Defaults to `(cypher-tx-size * num-parse-workers)`.
 *   `--log-batch-size <int>`: Log progress every N items (default: 1000).
@@ -135,26 +141,46 @@ python3 neo4j_manager.py dump-schema-types [-o <path>]
 
 ## Performance Tuning & Ingestion Strategy
 
+*Note: All performance observations and comparisons were made on a system with 8 processors.*
+
 This pipeline has been highly optimized for both speed and correctness, particularly regarding the creation of `:DEFINES` relationships.
+
+### The Previous `:DEFINES` Ingestion Bottleneck and Its Solution
+
+Initially, ingesting `:DEFINES` relationships was a significant bottleneck, taking approximately 6 hours for large codebases like the Linux kernel. This was primarily due to two factors:
+1.  **Generic `MATCH` Clause**: The Cypher query used a generic `MATCH (n {id: data.id})` to find the target symbol node. This was less efficient than specifying the node's label.
+2.  **Over-inclusion of Symbols**: The source data for relationships included all symbols with a definition location, even those for which no corresponding `:FUNCTION` or `:DATA_STRUCTURE` node was created (e.g., `Variable`, `Field`). This led to many wasted `MATCH` attempts for non-existent nodes.
+
+**Solution**: The optimization involved:
+1.  **Pre-filtering**: The source data is now pre-filtered into separate lists for `FUNCTION` and `DATA_STRUCTURE` symbols, ensuring that only relevant symbols are processed for relationship creation.
+2.  **Type-Specific `MATCH`**: The Cypher queries now use type-specific `MATCH (n:FUNCTION {id: data.id})` or `MATCH (n:DATA_STRUCTURE {id: data.id})`. This provides the Neo4j query planner with precise information, leading to much faster node lookups.
+
+This optimization dramatically reduced the ingestion time for `:DEFINES` relationships from **~6 hours to ~1 minute**, making all three strategies highly performant.
 
 ### The Concurrency Problem: Deadlocks
 
 When ingesting millions of relationships in parallel, a common problem is database deadlocks. This happens when two parallel database transactions try to acquire locks on the same nodes (e.g., the same `:FILE` node) in a conflicting order. The database aborts one transaction to resolve the deadlock, resulting in an incomplete graph where some relationships are silently dropped. Our investigation confirmed this was happening with a naive parallel `MERGE` approach.
 
-To solve this, the pipeline offers two distinct strategies for relationship ingestion, controlled by the `--idempotent-merge` flag.
+To solve this, the pipeline offers three distinct strategies for `:DEFINES` relationship ingestion, controlled by the `--defines-generation` flag.
 
-### Strategy 1: Fast, Non-Idempotent `CREATE` (Default)
+### `parallel-create` (Default and Fastest for `:DEFINES`)
 
--   **When it's used**: By default, or when `--idempotent-merge` is NOT specified.
--   **Algorithm**: This strategy prioritizes maximum speed. It uses the `CREATE` Cypher clause, which has simpler locking behavior and avoids the specific type of deadlocks encountered with `MERGE`. 
--   **Trade-off**: This method is **not idempotent**. It assumes the database is empty. If run on a graph that already contains data, it will create duplicate relationships. This is the default because the main pipeline scripts always reset the database, making this a safe and fast choice for the primary use case.
+-   **When it's used**: By default, or when `--defines-generation parallel-create` is specified.
+-   **Algorithm**: This strategy prioritizes maximum speed. It uses `apoc.periodic.iterate` with the `CREATE` Cypher clause for relationships. This approach has simpler locking behavior and avoids the specific type of deadlocks encountered with `MERGE`.
+-   **Trade-off**: This method is **not idempotent**. It assumes the database is clean. If run on a graph that already contains data, it will create duplicate relationships. This is the default because the main pipeline scripts always reset the database, making this a safe and fast choice for the primary use case. **Empirically, this has been found to be the fastest strategy for ingesting `:DEFINES` relationships in large projects.**
 
-### Strategy 2: Deadlock-Safe, Idempotent `MERGE` (Recommended for existing DBs)
+### `parallel-merge` (Idempotent and Deadlock-Safe)
 
--   **When it's used**: When the `--idempotent-merge` flag is specified.
--   **Algorithm**: This strategy prioritizes correctness and idempotency. It uses a sophisticated, two-level batching system to prevent deadlocks while still leveraging parallelism.
-    1.  **File-based Grouping**: First, all `:DEFINES` relationships are grouped by the file they belong to.
+-   **When it's used**: When `--defines-generation parallel-merge` is specified.
+-   **Algorithm**: This strategy prioritizes correctness and idempotency, for use cases where the script might be run on an existing database. It uses a highly sophisticated, two-level batching system with `apoc.periodic.iterate` and the `MERGE` Cypher clause to prevent deadlocks while still leveraging parallelism.
+    1.  **File-based Grouping**: First, all `:DEFINES` relationships are grouped by their target `:FILE` node.
     2.  **Two-Level Batching**: The script then uses a clever batching model:
         *   **Client Batch (`--ingest-batch-size`)**: The script creates a "query batch" of file-groups to submit to the database. This allows for a client-side progress indicator and controls how much data is sent over the network at once.
-        *   **Server Batch (`--cypher-tx-size`)**: Each query batch is processed by `apoc.periodic.iterate`. The `batchSize` for this procedure is dynamically calculated based on `--cypher-tx-size` and the average number of relationships per file. This ensures the server-side transactions are well-sized and predictable.
+        *   **Server Batch (`--cypher-tx-size`)**: Each query batch is processed by `apoc.periodic.iterate`. The `batchSize` for this procedure is dynamically calculated based on the average number of relationships per file and the `--cypher-tx-size` argument. This ensures the server-side transactions are well-sized and predictable.
     3.  **Deadlock Avoidance**: The key to this design is that the `apoc` procedure parallelizes the processing of *file-groups*. Since all relationships for `fileA.c` are in one group and all for `fileB.c` are in another, the database's parallel workers never operate on the same `:FILE` node at the same time. This **completely eliminates the cause of the deadlocks** while still allowing for high performance.
+
+### `unwind-create` (Experimental)
+
+-   **When it's used**: When `--defines-generation unwind-create` is specified.
+-   **Algorithm**: This strategy uses direct `UNWIND` with the `CREATE` Cypher clause for relationships, batching at the client side. It avoids `apoc.periodic.iterate`.
+-   **Performance Note**: While initially slower before the type-specific `MATCH` optimization, this strategy is now also highly performant. **Empirically, (before separating the label type specific matching) this strategy had been found to be  significantly slower (approximately 5 times slower on a 8-core system) than `parallel-create` or "paralle-merge" for ingesting `:DEFINES` relationships in large projects like the Linux kernel.** This is likely due to the overhead of repeated `MATCH` operations within each `UNWIND` transaction, which can be less efficient than `apoc.periodic.iterate`'s parallel sub-transactions for this specific type of relationship and data volume.
