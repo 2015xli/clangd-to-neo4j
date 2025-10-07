@@ -50,11 +50,23 @@ The `clangd_code_graph_builder.py` orchestrates the following passes:
 *   **Purpose**: Identifies and ingests function call relationships (`-[:CALLS]->`) into Neo4j.
 *   **Features**:
     *   **Adaptive Strategy**: Automatically selects the most efficient call graph extraction method based on whether the `Container` field is detected in the `clangd` index.
+    *   **`function_span_provider.py`**: For older `clangd` index formats (without the `Container` field), this module is used to extract precise function body spans via `tree-sitter`, enabling spatial lookup to determine calling functions.
 
 ### Pass 4: Cleanup Orphan Nodes
 
 *   **Purpose**: Removes any nodes that were created but ended up without any relationships, ensuring a clean graph.
 *   **Features**: This optional step can be skipped with the `--keep-orphans` flag.
+
+## RAG Data Generation Pipeline (`code_graph_rag_generator.py`)
+
+This pipeline runs *after* the main ingestion process to enrich the code graph with AI-generated summaries and vector embeddings, preparing it for Retrieval-Augmented Generation (RAG) queries. It follows a multi-pass approach to build context-aware knowledge.
+
+### Passes:
+
+*   **Pass 1: Initial Code-Only Function Summary**: Generates a baseline summary for each function based solely on its source code.
+*   **Pass 2: Context-Aware Function Summary**: Refines function summaries by incorporating contextual information from its callers and callees in the graph.
+*   **Pass 3: File and Folder "Roll-Up" Summaries**: Aggregates function summaries to create higher-level summaries for files, folders, and the entire project.
+*   **Pass 4: Embedding Generation**: Creates vector embeddings for all generated summaries, enabling semantic search within the graph.
 
 ## Usage
 
@@ -66,13 +78,60 @@ python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/>
 python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> --idempotent-merge
 ```
 
-**All Options:**
+**All Options for `clangd_code_graph_builder.py`:**
 *   `--num-parse-workers <int>`: Number of parallel workers for parsing the YAML index. Defaults to half the CPU cores. Set to `1` to disable parallel parsing.
 *   `--idempotent-merge`: Use the safe but slower `MERGE` strategy for relationships. Recommended if you are not starting with a clean database.
 *   `--cypher-tx-size <int>`: Target number of items (nodes/relationships) per server-side transaction. Default: `2000`.
 *   `--ingest-batch-size <int>`: Target number of items per client-side submission. Controls progress indicator frequency and the amount of work submitted at once. Defaults to `(cypher-tx-size * num-parse-workers)`.
 *   `--log-batch-size <int>`: Log progress every N items (default: 1000).
 *   `--keep-orphans`: Skip Pass 4 and keep orphan nodes in the graph.
+
+### `neo4j_manager.py` CLI Tool
+
+The `neo4j_manager.py` script provides command-line utilities for managing the Neo4j database, including schema inspection and property deletion.
+
+#### `dump_schema`
+
+Fetches and prints the graph schema, including node labels, their properties, and relationships.
+
+```bash
+python3 neo4j_manager.py dump_schema [OPTIONS]
+```
+
+**Options:**
+*   `-o, --output <path>`: Optional path to save the output text or JSON file.
+*   `--only-relations`: Only show relationships, skip node properties.
+*   `--with-node-counts`: Include node and relationship counts in the output.
+*   `--json-format`: Output raw JSON from APOC meta procedures instead of formatted text.
+
+**Output Enhancements:**
+*   **Consolidated Relationships**: Relationships are grouped by their starting node and type, displayed as `(StartLabel) -[:REL_TYPE]-> (EndLabelA|EndLabelB)`.
+*   **Property Explanations**: A separate section at the end provides brief explanations for common node properties, aiding in understanding the schema.
+
+#### `delete_property`
+
+Deletes a specified property from nodes. Can target nodes by label or all nodes.
+
+```bash
+python3 neo4j_manager.py delete_property --key <property_key> [--label <node_label> | --all-labels] [--rebuild-indexes]
+```
+
+**Options:**
+*   `--key <property_key>`: The property key to remove (e.g., `summaryEmbedding`).
+*   `--label <node_label>`: The node label to target (e.g., `FUNCTION`). Required unless `--all-labels` is used.
+*   `--all-labels`: Delete the property from all nodes that have it, regardless of label.
+*   `--rebuild-indexes`: If deleting embedding properties, this will drop and recreate vector indexes after deletion.
+
+#### `dump-schema-types`
+
+Recursively checks and prints the Python types of the raw schema data returned by Neo4j, useful for debugging.
+
+```bash
+python3 neo4j_manager.py dump-schema-types [-o <path>]
+```
+
+**Options:**
+*   `-o, --output <path>`: Optional path to save the output text file.
 
 ## Performance Tuning & Ingestion Strategy
 
