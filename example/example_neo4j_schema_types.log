@@ -1,0 +1,279 @@
+schema_info (dict)
+  schema_info.graph_meta (dict)
+    schema_info.graph_meta.nodes (list of 5 items)
+      schema_info.graph_meta.nodes[0] (dict)
+        schema_info.graph_meta.nodes[0].name (str) = DATA_STRUCTURE
+        schema_info.graph_meta.nodes[0].count (int) = 5
+    schema_info.graph_meta.relationships (list of 7 items)
+      schema_info.graph_meta.relationships[0] (tuple of 3 items)
+        schema_info.graph_meta.relationships[0][0] (dict)
+          schema_info.graph_meta.relationships[0][0].name (str) = PROJECT
+          schema_info.graph_meta.relationships[0][0].count (int) = 1
+  schema_info.node_properties_meta (list of 1 items)
+    schema_info.node_properties_meta[0] (dict)
+      schema_info.node_properties_meta[0].value (dict)
+        schema_info.node_properties_meta[0].value.FUNCTION (dict)
+          schema_info.node_properties_meta[0].value.FUNCTION.count (int) = 193
+          schema_info.node_properties_meta[0].value.FUNCTION.labels (list of 0 items)
+          schema_info.node_properties_meta[0].value.FUNCTION.properties (dict)
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.summary (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summary.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summary.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summary.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summary.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.scope (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.scope.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.scope.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.scope.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.scope.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.location (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.location.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.location.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.location.type (str) = LIST
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.location.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.file_path (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.file_path.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.file_path.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.file_path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.file_path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.return_type (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.return_type.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.return_type.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.return_type.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.return_type.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.type (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.type.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.type.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.type.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.type.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.kind (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.kind.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.kind.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.kind.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.kind.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.id (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.id.unique (bool) = True
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.id.indexed (bool) = True
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.id.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.id.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.name (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.name.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.name.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.name.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.name.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.path (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.path.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.path.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.summaryEmbedding (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summaryEmbedding.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summaryEmbedding.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summaryEmbedding.type (str) = LIST
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.summaryEmbedding.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.language (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.language.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.language.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.language.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.language.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.codeSummary (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.codeSummary.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.codeSummary.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.codeSummary.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.codeSummary.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.signature (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.signature.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.signature.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.signature.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.signature.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FUNCTION.properties.has_definition (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.has_definition.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.has_definition.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.has_definition.type (str) = BOOLEAN
+              schema_info.node_properties_meta[0].value.FUNCTION.properties.has_definition.existence (bool) = False
+          schema_info.node_properties_meta[0].value.FUNCTION.type (str) = node
+          schema_info.node_properties_meta[0].value.FUNCTION.relationships (dict)
+            schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS.count (int) = 626
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS.direction (str) = out
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS.labels (list of 2 items)
+                schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS.labels[0] (str) = FUNCTION
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.CALLS.properties (dict)
+            schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES (dict)
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES.count (int) = 172
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES.direction (str) = in
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES.labels (list of 1 items)
+                schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES.labels[0] (str) = FILE
+              schema_info.node_properties_meta[0].value.FUNCTION.relationships.DEFINES.properties (dict)
+        schema_info.node_properties_meta[0].value.DATA_STRUCTURE (dict)
+          schema_info.node_properties_meta[0].value.DATA_STRUCTURE.count (int) = 5
+          schema_info.node_properties_meta[0].value.DATA_STRUCTURE.labels (list of 0 items)
+          schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties (dict)
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.id (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.id.unique (bool) = True
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.id.indexed (bool) = True
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.id.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.id.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.scope (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.scope.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.scope.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.scope.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.scope.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.location (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.location.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.location.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.location.type (str) = LIST
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.location.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.file_path (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.file_path.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.file_path.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.file_path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.file_path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.name (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.name.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.name.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.name.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.name.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.path (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.path.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.path.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.language (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.language.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.language.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.language.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.language.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.kind (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.kind.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.kind.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.kind.type (str) = STRING
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.kind.existence (bool) = False
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.has_definition (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.has_definition.unique (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.has_definition.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.has_definition.type (str) = BOOLEAN
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.properties.has_definition.existence (bool) = False
+          schema_info.node_properties_meta[0].value.DATA_STRUCTURE.type (str) = node
+          schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships (dict)
+            schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES (dict)
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES.count (int) = 172
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES.direction (str) = in
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES.labels (list of 1 items)
+                schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES.labels[0] (str) = FILE
+              schema_info.node_properties_meta[0].value.DATA_STRUCTURE.relationships.DEFINES.properties (dict)
+        schema_info.node_properties_meta[0].value.PROJECT (dict)
+          schema_info.node_properties_meta[0].value.PROJECT.count (int) = 1
+          schema_info.node_properties_meta[0].value.PROJECT.labels (list of 0 items)
+          schema_info.node_properties_meta[0].value.PROJECT.properties (dict)
+            schema_info.node_properties_meta[0].value.PROJECT.properties.summary (dict)
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summary.unique (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summary.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summary.type (str) = STRING
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summary.existence (bool) = False
+            schema_info.node_properties_meta[0].value.PROJECT.properties.name (dict)
+              schema_info.node_properties_meta[0].value.PROJECT.properties.name.unique (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.name.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.name.type (str) = STRING
+              schema_info.node_properties_meta[0].value.PROJECT.properties.name.existence (bool) = False
+            schema_info.node_properties_meta[0].value.PROJECT.properties.path (dict)
+              schema_info.node_properties_meta[0].value.PROJECT.properties.path.unique (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.path.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.PROJECT.properties.path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.PROJECT.properties.summaryEmbedding (dict)
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summaryEmbedding.unique (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summaryEmbedding.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summaryEmbedding.type (str) = LIST
+              schema_info.node_properties_meta[0].value.PROJECT.properties.summaryEmbedding.existence (bool) = False
+          schema_info.node_properties_meta[0].value.PROJECT.type (str) = node
+          schema_info.node_properties_meta[0].value.PROJECT.relationships (dict)
+            schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS (dict)
+              schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS.count (int) = 0
+              schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS.direction (str) = out
+              schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS.labels (list of 2 items)
+                schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS.labels[0] (str) = FILE
+              schema_info.node_properties_meta[0].value.PROJECT.relationships.CONTAINS.properties (dict)
+        schema_info.node_properties_meta[0].value.CALLS (dict)
+          schema_info.node_properties_meta[0].value.CALLS.count (int) = 976
+          schema_info.node_properties_meta[0].value.CALLS.properties (dict)
+          schema_info.node_properties_meta[0].value.CALLS.type (str) = relationship
+        schema_info.node_properties_meta[0].value.FILE (dict)
+          schema_info.node_properties_meta[0].value.FILE.count (int) = 16
+          schema_info.node_properties_meta[0].value.FILE.labels (list of 0 items)
+          schema_info.node_properties_meta[0].value.FILE.properties (dict)
+            schema_info.node_properties_meta[0].value.FILE.properties.summary (dict)
+              schema_info.node_properties_meta[0].value.FILE.properties.summary.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.summary.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.summary.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FILE.properties.summary.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FILE.properties.name (dict)
+              schema_info.node_properties_meta[0].value.FILE.properties.name.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.name.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.name.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FILE.properties.name.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FILE.properties.path (dict)
+              schema_info.node_properties_meta[0].value.FILE.properties.path.unique (bool) = True
+              schema_info.node_properties_meta[0].value.FILE.properties.path.indexed (bool) = True
+              schema_info.node_properties_meta[0].value.FILE.properties.path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FILE.properties.path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FILE.properties.summaryEmbedding (dict)
+              schema_info.node_properties_meta[0].value.FILE.properties.summaryEmbedding.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.summaryEmbedding.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FILE.properties.summaryEmbedding.type (str) = LIST
+              schema_info.node_properties_meta[0].value.FILE.properties.summaryEmbedding.existence (bool) = False
+          schema_info.node_properties_meta[0].value.FILE.type (str) = node
+          schema_info.node_properties_meta[0].value.FILE.relationships (dict)
+            schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES (dict)
+              schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES.count (int) = 0
+              schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES.direction (str) = out
+              schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES.labels (list of 2 items)
+                schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES.labels[0] (str) = FUNCTION
+              schema_info.node_properties_meta[0].value.FILE.relationships.DEFINES.properties (dict)
+            schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS (dict)
+              schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS.count (int) = 17
+              schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS.direction (str) = in
+              schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS.labels (list of 2 items)
+                schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS.labels[0] (str) = FOLDER
+              schema_info.node_properties_meta[0].value.FILE.relationships.CONTAINS.properties (dict)
+        schema_info.node_properties_meta[0].value.DEFINES (dict)
+          schema_info.node_properties_meta[0].value.DEFINES.count (int) = 172
+          schema_info.node_properties_meta[0].value.DEFINES.properties (dict)
+          schema_info.node_properties_meta[0].value.DEFINES.type (str) = relationship
+        schema_info.node_properties_meta[0].value.FOLDER (dict)
+          schema_info.node_properties_meta[0].value.FOLDER.count (int) = 2
+          schema_info.node_properties_meta[0].value.FOLDER.labels (list of 1 items)
+            schema_info.node_properties_meta[0].value.FOLDER.labels[0] (str) = PROJECT
+          schema_info.node_properties_meta[0].value.FOLDER.properties (dict)
+            schema_info.node_properties_meta[0].value.FOLDER.properties.summary (dict)
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summary.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summary.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summary.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summary.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FOLDER.properties.name (dict)
+              schema_info.node_properties_meta[0].value.FOLDER.properties.name.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.name.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.name.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FOLDER.properties.name.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FOLDER.properties.path (dict)
+              schema_info.node_properties_meta[0].value.FOLDER.properties.path.unique (bool) = True
+              schema_info.node_properties_meta[0].value.FOLDER.properties.path.indexed (bool) = True
+              schema_info.node_properties_meta[0].value.FOLDER.properties.path.type (str) = STRING
+              schema_info.node_properties_meta[0].value.FOLDER.properties.path.existence (bool) = False
+            schema_info.node_properties_meta[0].value.FOLDER.properties.summaryEmbedding (dict)
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summaryEmbedding.unique (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summaryEmbedding.indexed (bool) = False
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summaryEmbedding.type (str) = LIST
+              schema_info.node_properties_meta[0].value.FOLDER.properties.summaryEmbedding.existence (bool) = False
+          schema_info.node_properties_meta[0].value.FOLDER.type (str) = node
+          schema_info.node_properties_meta[0].value.FOLDER.relationships (dict)
+            schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS (dict)
+              schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS.count (int) = 1
+              schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS.direction (str) = out
+              schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS.labels (list of 4 items)
+                schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS.labels[0] (str) = FILE
+              schema_info.node_properties_meta[0].value.FOLDER.relationships.CONTAINS.properties (dict)
+        schema_info.node_properties_meta[0].value.CONTAINS (dict)
+          schema_info.node_properties_meta[0].value.CONTAINS.count (int) = 17
+          schema_info.node_properties_meta[0].value.CONTAINS.properties (dict)
+          schema_info.node_properties_meta[0].value.CONTAINS.type (str) = relationship

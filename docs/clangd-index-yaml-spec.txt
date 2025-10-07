@@ -1,3 +1,4 @@
+============= Clangd index yaml file has follwing three kinds of documents 
 !Symbol documents have names, declaration/definition locations, documentation, and a bunch of attributes used for code completion.
 
 They can be looked up by ID, or fuzzy-searched by name.
@@ -10,7 +11,12 @@ They can be looked up by SymbolID.
 
 They are looked up using one of the Symbols and the kind.
 
-============ In clangd-indexer 16.x =======================
+============ Numbers are 0-indexed
+Both tree-sitter and clangd-indexer generate line number and row/column number as 0-indexed
+
+============ Differences in clangd index yaml file schema between different clangd-indexer versions
+
+----------------- In clangd-indexer 16.x ----------------
 // clang-tools-extra/clangd/index/Ref.h
 enum class RefKind : uint8_t {
   Unknown = 0,
@@ -63,7 +69,7 @@ References:
 
 In order to establish the call relation between functions, we have to develop our own logic.
 
-============ In clangd-indexer 21.x ========================
+----------------- In clangd-indexer 21.x ----------------
 // clang-tools-extra/clangd/index/Ref.h
 enum class RefKind : uint8_t {
   Unknown = 0,

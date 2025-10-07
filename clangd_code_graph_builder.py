@@ -115,9 +115,11 @@ def main():
                 extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
             else:
-                extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-                extractor.load_spans_from_project(args.project_path)
+                # Use the new, refactored span provider to enrich the symbol data in-place.
+                from function_span_provider import FunctionSpanProvider
+                FunctionSpanProvider(args.project_path, symbol_parser, args.log_batch_size)
+                extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
             
             call_relations = extractor.extract_call_relationships()
             extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
