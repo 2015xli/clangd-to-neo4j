@@ -93,12 +93,16 @@ Functions that are only called (leaf functions): {len(callees - callers)}
         output_file_path = "generated_call_graph_cypher_queries.cql"
         file_mode = 'w'
         
+        total_rels_created = 0
+
         for i in range(0, total_relations, self.ingest_batch_size):
             batch = call_relations[i:i + self.ingest_batch_size]
             query_template, params = self.get_call_relation_ingest_query(batch)
 
             if neo4j_manager:
-                neo4j_manager.process_batch([(query_template, params)])
+                all_counters = neo4j_manager.process_batch([(query_template, params)])
+                for counters in all_counters:
+                    total_rels_created += counters.relationships_created
             else:
                 formatted_query = query_template.strip()
                 formatted_params = json.dumps(params, indent=2)
@@ -109,9 +113,12 @@ Functions that are only called (leaf functions): {len(callees - callers)}
                 file_mode = 'a'
 
             print(".", end="", flush=True)
+
         print(flush=True)
         logger.info(f"Finished processing {total_relations} call relationships in batches.")
-        if not neo4j_manager:
+        if neo4j_manager:
+            logger.info(f"  Total CALLS relationships created: {total_rels_created}")
+        else:
             logger.info(f"Batched Cypher queries written to {output_file_path}")
 
 # --- Extractor Without Container ---

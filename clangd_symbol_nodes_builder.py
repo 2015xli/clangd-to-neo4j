@@ -140,6 +140,8 @@ class SymbolProcessor:
         if not function_data_list:
             return
         logger.info(f"Creating {len(function_data_list)} FUNCTION nodes in batches...")
+        total_nodes_created = 0
+        total_properties_set = 0
         for i in range(0, len(function_data_list), self.ingest_batch_size):
             batch = function_data_list[i:i + self.ingest_batch_size]
             function_merge_query = """
@@ -148,14 +150,20 @@ class SymbolProcessor:
             ON CREATE SET n += data
             ON MATCH SET n += data
             """
-            neo4j_mgr.process_batch([(function_merge_query, {"function_data": batch})])
+            all_counters = neo4j_mgr.process_batch([(function_merge_query, {"function_data": batch})])
+            for counters in all_counters:
+                total_nodes_created += counters.nodes_created
+                total_properties_set += counters.properties_set
             print(".", end="", flush=True)
         print(flush=True)
+        logger.info(f"  Total FUNCTION nodes created: {total_nodes_created}, properties set: {total_properties_set}")
 
     def _ingest_data_structure_nodes(self, data_structure_data_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not data_structure_data_list:
             return
         logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes in batches...")
+        total_nodes_created = 0
+        total_properties_set = 0
         for i in range(0, len(data_structure_data_list), self.ingest_batch_size):
             batch = data_structure_data_list[i:i + self.ingest_batch_size]
             data_structure_merge_query = """
@@ -164,9 +172,13 @@ class SymbolProcessor:
             ON CREATE SET n += data
             ON MATCH SET n += data
             """
-            neo4j_mgr.process_batch([(data_structure_merge_query, {"data_structure_data": batch})])
+            all_counters = neo4j_mgr.process_batch([(data_structure_merge_query, {"data_structure_data": batch})])
+            for counters in all_counters:
+                total_nodes_created += counters.nodes_created
+                total_properties_set += counters.properties_set
             print(".", end="", flush=True)
         print(flush=True)
+        logger.info(f"  Total DATA_STRUCTURE nodes created: {total_nodes_created}, properties set: {total_properties_set}")
 
     def _get_defines_stats(self, defines_list: List[Dict]) -> str:
         from collections import Counter
@@ -184,6 +196,7 @@ class SymbolProcessor:
         logger.info("Creating relationships in batches using non-idempotent CREATE...")
 
         # Ingest FUNCTION DEFINES relationships
+        total_rels_created_func = 0
         if defines_function_list:
             logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
             for i in range(0, len(defines_function_list), self.ingest_batch_size):
@@ -195,14 +208,17 @@ class SymbolProcessor:
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
                 """
-                neo4j_mgr.execute_autocommit_query(
+                counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,
                     {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
                 )
+                total_rels_created_func += counters.relationships_created
                 print(".", end="", flush=True)
             print(flush=True)
+            logger.info(f"  Total FUNCTION DEFINES relationships created: {total_rels_created_func}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
+        total_rels_created_ds = 0
         if defines_data_structure_list:
             logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
             for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
@@ -214,12 +230,14 @@ class SymbolProcessor:
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
                 """
-                neo4j_mgr.execute_autocommit_query(
+                counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,
                     {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
                 )
+                total_rels_created_ds += counters.relationships_created
                 print(".", end="", flush=True)
             print(flush=True)
+            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created_ds}")
 
     def _ingest_defines_relationships_merge(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
@@ -270,6 +288,8 @@ class SymbolProcessor:
 
         logger.info(f"  Avg rels/file: {avg_group_size:.2f}. Targeting ~{self.ingest_batch_size} rels/submission and ~{self.cypher_tx_size} rels/tx.")
         logger.info(f"  Submitting {final_groups_per_query} file-groups per query, with {final_groups_per_tx} file-groups per server tx.")
+        total_rels_created = 0
+        total_rels_merged = 0
 
         for i in range(0, len(list_of_groups), final_groups_per_query):
             query_batch = list_of_groups[i:i + final_groups_per_query]
@@ -279,14 +299,23 @@ class SymbolProcessor:
                 "UNWIND $groups AS group RETURN group",
                 "UNWIND group AS data MATCH (f:FILE {{path: data.file_path}}) MATCH (n{node_label_filter} {{id: data.id}}) MERGE (f)-[:DEFINES]->(n)",
                 {{ batchSize: $batch_size, parallel: true, params: {{ groups: $groups }} }}
-            )
+            ) 
+            YIELD updateStatistics
+            RETURN
+                sum(updateStatistics.relationshipsCreated) AS totalRelsCreated,
+                sum(updateStatistics.relationshipsUpdated) AS totalRelsMerged
             """
-            neo4j_mgr.execute_autocommit_query(
+            results = neo4j_mgr.execute_query_and_return_records(
                 defines_rel_query,
                 {"groups": query_batch, "batch_size": final_groups_per_tx}
             )
+            if results and len(results) > 0:
+                total_rels_created += results[0].get("totalRelsCreated", 0)
+                total_rels_merged += results[0].get("totalRelsMerged", 0)
             print(".", end="", flush=True)
+
         print(flush=True)
+        logger.info(f"  Total {node_label_filter} relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
     def _ingest_defines_relationships_unwind_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
@@ -299,6 +328,7 @@ class SymbolProcessor:
         logger.info("Creating relationships in batches using direct UNWIND CREATE (experimental)...")
 
         # Ingest FUNCTION DEFINES relationships
+        total_rels_created_func = 0
         if defines_function_list:
             logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
             for i in range(0, len(defines_function_list), self.ingest_batch_size):
@@ -309,14 +339,17 @@ class SymbolProcessor:
                 MATCH (n:FUNCTION {id: data.id})
                 CREATE (f)-[:DEFINES]->(n)
                 """
-                neo4j_mgr.execute_autocommit_query(
+                counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,
                     {"defines_data": batch}
                 )
+                total_rels_created_func += counters.relationships_created
                 print(".", end="", flush=True)
             print(flush=True)
+            logger.info(f"  Total FUNCTION DEFINES relationships created: {total_rels_created_func}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
+        total_rels_created_ds = 0
         if defines_data_structure_list:
             logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
             for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
@@ -327,12 +360,14 @@ class SymbolProcessor:
                 MATCH (n:DATA_STRUCTURE {id: data.id})
                 CREATE (f)-[:DEFINES]->(n)
                 """
-                neo4j_mgr.execute_autocommit_query(
+                counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,
                     {"defines_data": batch}
                 )
+                total_rels_created_ds += counters.relationships_created
                 print(".", end="", flush=True)
             print(flush=True)
+            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created_ds}")
         logger.info("Finished relationship ingestion (experimental UNWIND CREATE).")
 
 class PathProcessor:
@@ -412,6 +447,9 @@ class PathProcessor:
     def _ingest_folder_nodes_and_relationships(self, folder_data_list: List[Dict]):
         if not folder_data_list:
             return
+        total_nodes_created = 0
+        total_properties_set = 0
+        total_rels_created = 0
         logger.info(f"Creating {len(folder_data_list)} folder nodes and relationships in batches...")
         for i in range(0, len(folder_data_list), self.ingest_batch_size):
             batch = folder_data_list[i:i + self.ingest_batch_size]
@@ -421,23 +459,48 @@ class PathProcessor:
             ON CREATE SET f.name = data.name
             ON MATCH SET f.name = data.name
             """
-            self.neo4j_mgr.process_batch([(folder_merge_query, {"folder_data": batch})])
+            node_counters = self.neo4j_mgr.process_batch([(folder_merge_query, {"folder_data": batch})])
+            for counters in node_counters:
+                total_nodes_created += counters.nodes_created
+                total_properties_set += counters.properties_set
 
             folder_rel_query = """
             UNWIND $folder_data AS data
             MATCH (child:FOLDER {path: data.path})
             WITH child, data
-            MATCH (parent {path: data.parent_path})
+            MATCH (parent:FOLDER {path: data.parent_path})
             MERGE (parent)-[:CONTAINS]->(child)
             """
-            self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": batch})])
+            rel_counters = self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": batch})])
+            for counters in rel_counters:
+                total_rels_created += counters.relationships_created
+
+            folder_rel_query = """
+            UNWIND $folder_data AS data
+            MATCH (child:FOLDER {path: data.path})
+            WITH child, data
+            MATCH (parent:PROJECT {path: data.parent_path})
+            MERGE (parent)-[:CONTAINS]->(child)
+            """
+            rel_counters = self.neo4j_mgr.process_batch([(folder_rel_query, {"folder_data": batch})])
+            for counters in rel_counters:
+                total_rels_created += counters.relationships_created
+
             print(".", end="", flush=True)
+
         print(flush=True)
+        logger.info(f"  Total FOLDER nodes created: {total_nodes_created}, properties set: {total_properties_set}")
+        logger.info(f"  Total CONTAINS relationships created for FOLDERs: {total_rels_created}")
 
     def _ingest_file_nodes_and_relationships(self, file_data_list: List[Dict]):
         if not file_data_list:
             return
+
         logger.info(f"Creating {len(file_data_list)} file nodes and relationships in batches...")
+        total_nodes_created = 0
+        total_properties_set = 0
+        total_rels_created = 0
+
         for i in range(0, len(file_data_list), self.ingest_batch_size):
             batch = file_data_list[i:i + self.ingest_batch_size]
             file_merge_query = """
@@ -446,18 +509,38 @@ class PathProcessor:
             ON CREATE SET f.name = data.name
             ON MATCH SET f.name = data.name
             """
-            self.neo4j_mgr.process_batch([(file_merge_query, {"file_data": batch})])
+            node_counters = self.neo4j_mgr.process_batch([(file_merge_query, {"file_data": batch})])
+            for counters in node_counters:
+                total_nodes_created += counters.nodes_created
+                total_properties_set += counters.properties_set
 
             file_rel_query = """
             UNWIND $file_data AS data
             MATCH (child:FILE {path: data.path})
             WITH child, data
-            MATCH (parent {path: data.parent_path})
+            MATCH (parent:FOLDER {path: data.parent_path})
             MERGE (parent)-[:CONTAINS]->(child)
             """
-            self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": batch})])
+            rel_counters = self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": batch})])
+            for counters in rel_counters:
+                total_rels_created += counters.relationships_created
+
+            file_rel_query = """
+            UNWIND $file_data AS data
+            MATCH (child:FILE {path: data.path})
+            WITH child, data
+            MATCH (parent:PROJECT {path: data.parent_path})
+            MERGE (parent)-[:CONTAINS]->(child)
+            """
+            rel_counters = self.neo4j_mgr.process_batch([(file_rel_query, {"file_data": batch})])
+            for counters in rel_counters:
+                total_rels_created += counters.relationships_created
+
             print(".", end="", flush=True)
+
         print(flush=True)
+        logger.info(f"  Total FILE nodes created: {total_nodes_created}, properties set: {total_properties_set}")
+        logger.info(f"  Total CONTAINS relationships created for FILEs: {total_rels_created}")
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

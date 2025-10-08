@@ -3,7 +3,7 @@ from neo4j import GraphDatabase
 import logging
 import argparse
 import json
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 from collections import defaultdict
 
 logger = logging.getLogger(__name__)
@@ -59,18 +59,29 @@ class Neo4jManager:
                 {"path": project_path, "name": os.path.basename(project_path) or "Project"}
             )
     
-    def process_batch(self, batch: List[Tuple[str, Dict]]) -> None:
+    def process_batch(self, batch: List[Tuple[str, Dict]]) -> List[Any]: # Returns list of summary.counters
+        all_counters = []
         with self.driver.session() as session:
             with session.begin_transaction() as tx:
                 for cypher, params in batch:
-                    tx.run(cypher, **params)
+                    result = tx.run(cypher, **params)
+                    all_counters.append(result.consume().counters)
+                tx.commit()
+        return all_counters
 
-    def execute_autocommit_query(self, cypher: str, params: Dict) -> None:
+    def execute_autocommit_query(self, cypher: str, params: Dict) -> Any: # Returns summary.counters
         with self.driver.session() as session:
-            session.run(cypher, **params)
+            result = session.run(cypher, **params)
+            return result.consume().counters
 
     def execute_read_query(self, cypher: str, params: dict = None) -> list[dict]:
         """Executes a read query and returns a list of result records."""
+        with self.driver.session() as session:
+            result = session.run(cypher, **(params or {}))
+            return [record.data() for record in result]
+
+    def execute_query_and_return_records(self, cypher: str, params: dict = None) -> List[Dict]:
+        """Executes a query and returns a list of result records."""
         with self.driver.session() as session:
             result = session.run(cypher, **(params or {}))
             return [record.data() for record in result]
