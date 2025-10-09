@@ -15,7 +15,7 @@ import logging
 import gc
 
 # New imports from the common parser module
-from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser, Symbol, Location
+from clangd_index_yaml_parser import SymbolParser, Symbol, Location
 from neo4j_manager import Neo4jManager
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class SymbolProcessor:
         self._ingest_data_structure_nodes(data_structure_data_list, neo4j_mgr)
 
         if defines_generation_strategy == "unwind-create":
-            logger.info("Using experimental direct UNWIND CREATE for DEFINES relationships.")
+            logger.info("Using direct sequential UNWIND CREATE for DEFINES relationships.")
             self._ingest_defines_relationships_unwind_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
         elif defines_generation_strategy == "parallel-merge":
             logger.info("Using parallel MERGE for DEFINES relationships with file-based grouping.")
@@ -196,7 +196,8 @@ class SymbolProcessor:
         logger.info("Creating relationships in batches using non-idempotent CREATE...")
 
         # Ingest FUNCTION DEFINES relationships
-        total_rels_created_func = 0
+        total_rels_created = 0
+        total_rels_merged = 0
         if defines_function_list:
             logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
             for i in range(0, len(defines_function_list), self.ingest_batch_size):
@@ -207,18 +208,26 @@ class SymbolProcessor:
                     "MATCH (f:FILE {path: data.file_path}) MATCH (n:FUNCTION {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
+                YIELD updateStatistics
+                RETURN
+                    sum(updateStatistics.relationshipsCreated) AS totalRelsCreated,
+                    sum(updateStatistics.relationshipsUpdated) AS totalRelsMerged
                 """
-                counters = neo4j_mgr.execute_autocommit_query(
+                results = neo4j_mgr.execute_query_and_return_records(
                     defines_rel_query,
                     {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
                 )
-                total_rels_created_func += counters.relationships_created
+                if results and len(results) > 0:
+                    total_rels_created += results[0].get("totalRelsCreated", 0)
+                    total_rels_merged += results[0].get("totalRelsMerged", 0)
+
                 print(".", end="", flush=True)
             print(flush=True)
-            logger.info(f"  Total FUNCTION DEFINES relationships created: {total_rels_created_func}")
+            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
-        total_rels_created_ds = 0
+        total_rels_created = 0
+        total_rels_merged = 0
         if defines_data_structure_list:
             logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
             for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
@@ -229,15 +238,24 @@ class SymbolProcessor:
                     "MATCH (f:FILE {path: data.file_path}) MATCH (n:DATA_STRUCTURE {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
+                YIELD updateStatistics
+                RETURN
+                    sum(updateStatistics.relationshipsCreated) AS totalRelsCreated,
+                    sum(updateStatistics.relationshipsUpdated) AS totalRelsMerged
                 """
-                counters = neo4j_mgr.execute_autocommit_query(
+                results = neo4j_mgr.execute_query_and_return_records(
                     defines_rel_query,
                     {"defines_data": batch, "cypher_tx_size": self.cypher_tx_size}
                 )
-                total_rels_created_ds += counters.relationships_created
+                if results and len(results) > 0:
+                    total_rels_created += results[0].get("totalRelsCreated", 0)
+                    total_rels_merged += results[0].get("totalRelsMerged", 0)
+
                 print(".", end="", flush=True)
             print(flush=True)
-            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created_ds}")
+            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
+
+        logger.info("Finished DEFINES relationship ingestion.")
 
     def _ingest_defines_relationships_merge(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
@@ -268,7 +286,7 @@ class SymbolProcessor:
                     grouped_by_file_datastructures[item['file_path']].append(item)
             self._process_grouped_defines_merge(grouped_by_file_datastructures, neo4j_mgr, ":DATA_STRUCTURE")
 
-        logger.info("Finished relationship ingestion.")
+        logger.info("Finished DEFINES relationship ingestion.")
 
     def _process_grouped_defines_merge(self, grouped_by_file: Dict[str, List[Dict]], neo4j_mgr: Neo4jManager, node_label_filter: str):
         list_of_groups = list(grouped_by_file.values())
@@ -325,7 +343,7 @@ class SymbolProcessor:
             f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
             f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
         )
-        logger.info("Creating relationships in batches using direct UNWIND CREATE (experimental)...")
+        logger.info("Creating relationships in batches using direct UNWIND CREATE (sequential)...")
 
         # Ingest FUNCTION DEFINES relationships
         total_rels_created_func = 0
@@ -368,7 +386,7 @@ class SymbolProcessor:
                 print(".", end="", flush=True)
             print(flush=True)
             logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created_ds}")
-        logger.info("Finished relationship ingestion (experimental UNWIND CREATE).")
+        logger.info("Finished DEFINES relationship ingestion (sequential UNWIND CREATE).")
 
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
@@ -552,7 +570,7 @@ def main():
         default_workers = 1
 
     parser = argparse.ArgumentParser(description='Import Clangd index symbols and file structure into Neo4j.')
-    parser.add_argument('index_file', help='Path to the clangd index YAML file')
+    parser.add_argument('index_file', help='Path to the clangd index YAML file (or a .pkl cache file).')
     parser.add_argument('project_path', help='Root path of the project')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
     parser.add_argument('--cypher-tx-size', type=int, default=2000, help='Target relationships per server-side transaction (default: 2000).')
@@ -571,19 +589,12 @@ def main():
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
 
-    if args.num_parse_workers > 1:
-        logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
-        symbol_parser = ParallelSymbolParser(
-            index_file_path=args.index_file,
-            log_batch_size=args.log_batch_size
-        )
-        symbol_parser.parse(num_workers=args.num_parse_workers)
-    else:
-        logger.info("Using standard SymbolParser in single-threaded mode.")
-        symbol_parser = SymbolParser(log_batch_size=args.log_batch_size)
-        symbol_parser.parse_yaml_file(args.index_file)
+    symbol_parser = SymbolParser(
+        index_file_path=args.index_file,
+        log_batch_size=args.log_batch_size
+    )
+    symbol_parser.parse(num_workers=args.num_parse_workers)
 
-    symbol_parser.build_cross_references()
     logger.info("--- Finished Phase 0 ---")
     
     path_manager = PathManager(args.project_path)

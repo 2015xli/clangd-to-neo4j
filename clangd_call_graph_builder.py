@@ -16,7 +16,7 @@ import math
 
 from tree_sitter_span_extractor import SpanExtractor
 from clangd_index_yaml_parser import (
-    SymbolParser, ParallelSymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
+    SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
 from neo4j_manager import Neo4jManager
 
@@ -223,7 +223,7 @@ def main():
         default_workers = 2
 
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
-    parser.add_argument('input_file', help='Path to clangd index YAML file')
+    parser.add_argument('input_file', help='Path to clangd index YAML file (or a .pkl cache file).')
     parser.add_argument('span_path', help='Path to a pre-computed spans YAML file, or a project directory to scan')
     parser.add_argument('--output', '-o', help='Output JSON file path')
     parser.add_argument('--stats', action='store_true', help='Show statistics')
@@ -236,19 +236,11 @@ def main():
     
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
-    if args.num_parse_workers > 1:
-        logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
-        symbol_parser = ParallelSymbolParser(
-            index_file_path=args.input_file,
-            log_batch_size=args.log_batch_size
-        )
-        symbol_parser.parse(num_workers=args.num_parse_workers)
-    else:
-        logger.info("Using standard SymbolParser in single-threaded mode.")
-        symbol_parser = SymbolParser(log_batch_size=args.log_batch_size)
-        symbol_parser.parse_yaml_file(args.input_file)
-
-    symbol_parser.build_cross_references()
+    symbol_parser = SymbolParser(
+        index_file_path=args.input_file,
+        log_batch_size=args.log_batch_size
+    )
+    symbol_parser.parse(num_workers=args.num_parse_workers)
     logger.info("--- Finished Phase 0 ---")
 
     # 2. Create extractor based on available features

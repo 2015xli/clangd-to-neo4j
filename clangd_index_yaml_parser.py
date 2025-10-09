@@ -7,10 +7,10 @@ and provides a SymbolParser class to read a clangd index file into an
 in-memory collection of symbol objects.
 """
 
-import yaml
+import yaml, pickle
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
-import logging
+import logging, os
 import gc
 import math
 import concurrent.futures
@@ -118,22 +118,81 @@ class CallRelation:
 # --- Symbol Parser ---
 
 class SymbolParser:
-    """
-    Parses a clangd YAML index file. This class separates loading from linking.
-    """
-    def __init__(self, log_batch_size: int = 1000, debugger: Optional[Debugger] = None):
+    """A high-performance parser for clangd index YAML files with built-in caching."""
+    def __init__(self, index_file_path: str, log_batch_size: int = 1000, debugger: Optional[Debugger] = None):
+        self.index_file_path = index_file_path
+        self.log_batch_size = log_batch_size
+        self.debugger = debugger
+        
+        # These fields will be populated by parsing or loading from cache
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
-        self.unlinked_refs: List[Dict] = []
-        self.log_batch_size = log_batch_size
         self.has_container_field: bool = False
-        self.debugger = debugger
+        
+        # This field is transient and only used during YAML parsing
+        self.unlinked_refs: List[Dict] = []
 
-    def parse_yaml_file(self, index_file_path: str):
+    def parse(self, num_workers: int = 1):
+        """
+        Main entry point for parsing. Handles cache loading/saving.
+        """
+        cache_path = os.path.splitext(self.index_file_path)[0] + ".pkl"
+
+        # Determine if we should load from cache
+        if self.index_file_path.endswith('.pkl'):
+            self._load_cache_file(self.index_file_path)
+            return # Loading complete
+        elif os.path.exists(cache_path):
+            logger.info(f"Found existing cache file: {cache_path}")
+            logger.info("To force re-parsing the YAML, delete the .pkl file and run again.")
+            self._load_cache_file(cache_path)
+            return # Loading complete
+
+        # --- Cache not found, proceed with YAML parsing ---
+        if num_workers > 1:
+            logger.info(f"Using parallel parser with {num_workers} workers.")
+            self._parallel_parse(num_workers)
+        else:
+            logger.info("Using standard parser in single-threaded mode.")
+            self._parse_yaml_file()
+        
+        self.build_cross_references()
+
+        # --- Save to cache for future runs ---
+        self._dump_cache_file(cache_path)
+
+    def _load_cache_file(self, cache_path: str):
+        logger.info(f"Loading parsed symbols from cache: {cache_path}")
+        try:
+            with open(cache_path, 'rb') as f:
+                cache_data = pickle.load(f)
+            self.symbols = cache_data['symbols']
+            self.functions = cache_data['functions']
+            self.has_container_field = cache_data['has_container_field']
+            logger.info("Successfully loaded symbols from cache.")
+        except (pickle.UnpicklingError, EOFError, KeyError) as e:
+            logger.error(f"Cache file {cache_path} is corrupted or invalid: {e}. Please delete it and re-run.", exc_info=True)
+            raise
+
+    def _dump_cache_file(self, cache_path: str):
+        logger.info(f"Saving parsed symbols to cache: {cache_path}")
+        try:
+            cache_data = {
+                'symbols': self.symbols,
+                'functions': self.functions,
+                'has_container_field': self.has_container_field
+            }
+            with open(cache_path, 'wb') as f:
+                pickle.dump(cache_data, f)
+            logger.info("Successfully saved symbols to cache.")
+        except Exception as e:
+            logger.error(f"Failed to save cache to {cache_path}: {e}", exc_info=True)
+
+    def _parse_yaml_file(self):
         """Phase 1: Reads and sanitizes a YAML file, then loads the data."""
-        logger.info(f"Reading and sanitizing index file: {index_file_path}")
+        logger.info(f"Reading and sanitizing index file: {self.index_file_path}")
         # Read file and sanitize content into an in-memory string
-        with open(index_file_path, 'r', errors='ignore') as f:
+        with open(self.index_file_path, 'r', errors='ignore') as f:
             yaml_content = f.read().replace('\t', '  ')
         
         self._load_from_string(yaml_content)
@@ -191,24 +250,7 @@ class SymbolParser:
             type=doc.get('Type', '')
         )
 
-# --- Parallel Parser ---
-
-def _parse_worker(yaml_content_chunk: str, log_batch_size: int) -> Tuple[Dict[str, Symbol], List[Dict], bool]:
-    """
-    Worker function to parse a YAML content string chunk.
-    This function is executed in a separate process.
-    """
-    parser = SymbolParser(log_batch_size=log_batch_size)
-    parser._load_from_string(yaml_content_chunk)
-    return parser.symbols, parser.unlinked_refs, parser.has_container_field
-
-class ParallelSymbolParser(SymbolParser):
-    """
-    Reads and parses a clangd YAML index in parallel by chunking it in memory.
-    """
-    def __init__(self, index_file_path: str, log_batch_size: int = 1000, debugger: Optional[Debugger] = None):
-        super().__init__(log_batch_size, debugger)
-        self.index_file_path = index_file_path
+    # Reads and parses a clangd YAML index in parallel by chunking it in memory.
 
     def _sanitize_and_chunk_in_memory(self, num_chunks: int) -> List[str]:
         """Reads the source file once, returning a list of sanitized in-memory chunk strings."""
@@ -255,10 +297,11 @@ class ParallelSymbolParser(SymbolParser):
         logger.info(f"Successfully created {len(chunks)} in-memory chunks.")
         return chunks
 
-    def parse(self, num_workers: int):
+    def _parallel_parse(self, num_workers: int):
         """
         Phase 1 (Parallel): Reads and loads raw data from the index file in parallel.
         """
+        logger.info("Sanitizing and chunking YAML file for parallel processing...")
         # Create in-memory chunks from the main file
         content_chunks = self._sanitize_and_chunk_in_memory(num_workers)
 
@@ -266,11 +309,29 @@ class ParallelSymbolParser(SymbolParser):
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
             results = executor.map(_parse_worker, content_chunks, itertools.repeat(self.log_batch_size))
             
-            for i, (symbols_chunk, refs_chunk, has_container_chunk) in enumerate(results):
+            for i, (symbols_chunk, refs_chunk) in enumerate(results):
                 logger.info(f"Merging results from chunk {i+1}/{len(content_chunks)}...")
                 self.symbols.update(symbols_chunk)
                 self.unlinked_refs.extend(refs_chunk)
-                if has_container_chunk:
-                    self.has_container_field = True
         
         logger.info("All chunks processed and merged.")
+
+# --- Parallel Parser ---
+
+def _parse_worker(yaml_content_chunk: str, log_batch_size: int) -> Tuple[Dict[str, Symbol], List[Dict], bool]:
+    """
+    Worker function to parse a YAML content string chunk.
+    This function is executed in a separate process.
+    """
+    # new a local parser since the forked process can only see module-level symbols
+    # we only need to use its functions, so no need to pass the index_file_path
+    local_parser = SymbolParser("", log_batch_size)
+    try:
+        local_parser._load_from_string(yaml_content_chunk)
+        return local_parser.symbols, local_parser.unlinked_refs
+
+    except yaml.YAMLError as e:
+        logger.error(f"YAML parsing error in worker: {e}")
+        return {}, [], False
+
+

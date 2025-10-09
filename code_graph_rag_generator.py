@@ -16,7 +16,7 @@ from typing import Iterable, Callable, List
 from tqdm import tqdm
 
 from neo4j_manager import Neo4jManager
-from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser
+from clangd_index_yaml_parser import SymbolParser
 from function_span_provider import FunctionSpanProvider
 from llm_client import get_llm_client, LlmClient, get_embedding_client, EmbeddingClient
 
@@ -386,7 +386,7 @@ def main():
         default_workers = 1
 
     parser = argparse.ArgumentParser(description='Generate summaries and embeddings for a code graph, as per docs/code_rag_generation_plan.md.')
-    parser.add_argument('index_file', help='Path to the clangd index YAML file, needed to map symbols to spans.')
+    parser.add_argument('index_file', help='Path to the clangd index YAML file (or a .pkl cache file).')
     parser.add_argument('project_path', help='The absolute path to the project root, used to resolve relative file paths.')
     parser.add_argument('--api', choices=['openai', 'deepseek', 'ollama'], default='deepseek', help='The LLM API to use for summarization.')
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
@@ -404,14 +404,10 @@ def main():
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection(): return 1
             
-            logging.info("Parsing YAML index to build symbol map for span matching...")
-            if args.num_parse_workers > 1:
-                symbol_parser = ParallelSymbolParser(index_file_path=args.index_file)
-                symbol_parser.parse(num_workers=args.num_parse_workers)
-            else:
-                symbol_parser = SymbolParser()
-                symbol_parser.parse_yaml_file(args.index_file)
-            symbol_parser.build_cross_references()
+            # This single block now handles YAML parsing, parallelization, and caching
+            logger.info("Parsing YAML index or loading from cache...")
+            symbol_parser = SymbolParser(index_file_path=args.index_file)
+            symbol_parser.parse(num_workers=args.num_parse_workers)
 
             span_provider = FunctionSpanProvider(args.project_path, symbol_parser)
             generator = RagGenerator(

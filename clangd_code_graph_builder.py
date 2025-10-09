@@ -20,7 +20,7 @@ import math
 # Import processors and managers from the library scripts
 from clangd_symbol_nodes_builder import PathManager, PathProcessor, SymbolProcessor
 from clangd_call_graph_builder import ClangdCallGraphExtractorWithContainer, ClangdCallGraphExtractorWithoutContainer
-from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser
+from clangd_index_yaml_parser import SymbolParser
 from neo4j_manager import Neo4jManager
 from utils import Debugger
 
@@ -73,21 +73,14 @@ def main():
         # --- Phase 0: Load, Parse, and Link Symbols ---
         logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
 
-        if args.num_parse_workers > 1:
-            logger.info(f"Using ParallelSymbolParser with {args.num_parse_workers} workers.")
-            symbol_parser = ParallelSymbolParser(
-                index_file_path=args.index_file,
-                log_batch_size=args.log_batch_size,
-                debugger=debugger
-            )
-            symbol_parser.parse(num_workers=args.num_parse_workers)
-        else:
-            logger.info("Using standard SymbolParser in single-threaded mode.")
-            symbol_parser = SymbolParser(log_batch_size=args.log_batch_size, debugger=debugger)
-            symbol_parser.parse_yaml_file(args.index_file)
+        symbol_parser = SymbolParser(
+            index_file_path=args.index_file,
+            log_batch_size=args.log_batch_size,
+            debugger=debugger
+        )
+        # This single call now handles YAML parsing, parallelization, and caching
+        symbol_parser.parse(num_workers=args.num_parse_workers)
 
-        # Phase 0.5: Link all parsed data
-        symbol_parser.build_cross_references()
         logger.info("--- Finished Phase 0 ---")
 
         # --- Main Processing ---
