@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 class LlmClient:
     """Base class for LLM clients."""
+    is_local: bool = False
+
     def generate_summary(self, prompt: str) -> str:
         """Generates a summary for a given prompt."""
         raise NotImplementedError
@@ -65,6 +67,8 @@ class DeepSeekClient(LlmClient):
 
 class OllamaClient(LlmClient):
     """Client for a local Ollama instance."""
+    is_local: bool = True
+
     def __init__(self):
         self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         if not self.base_url:
@@ -104,12 +108,16 @@ def get_llm_client(api_name: str) -> LlmClient:
 
 class EmbeddingClient:
     """Base class for embedding clients."""
+    is_local: bool = False
+
     def generate_embedding(self, text: str) -> list[float]:
         """Generates an embedding vector for a given text."""
         raise NotImplementedError
 
 class SentenceTransformerClient(EmbeddingClient):
     """Client that uses a local SentenceTransformer model."""
+    is_local: bool = True
+
     def __init__(self):
         try:
             from sentence_transformers import SentenceTransformer

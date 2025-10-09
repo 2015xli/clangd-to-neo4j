@@ -57,11 +57,11 @@ This optimization dramatically reduced the ingestion time for `:DEFINES` relatio
     3.  **Server-Side Batching**: Each "query batch" is sent to a single `apoc.periodic.iterate` call. This call processes the file-groups in parallel. Because all relationships for `fileA` are in one group and all for `fileB` are in another, the database's parallel workers never operate on the same `:FILE` node, **completely eliminating the cause of the deadlocks**.
     4.  **Dynamic Transaction Sizing**: The `batchSize` for the `apoc` call is dynamically calculated based on the average number of relationships per file and the `--cypher-tx-size` argument. This makes the tuning parameters more predictable, as they consistently relate to the number of relationships per operation, not the number of files.
 
-#### `unwind-create` (Experimental)
+#### `unwind-create` 
 
 -   **Command**: When `--defines-generation unwind-create` is specified.
 -   **Algorithm**: This strategy uses direct `UNWIND` with the `CREATE` Cypher clause for relationships, batching at the client side. It avoids `apoc.periodic.iterate`.
--   **Performance Note**: While initially slower before the type-specific `MATCH` optimization, this strategy is now also highly performant.
+-   **Performance Note**: While initially slower before the type-specific `MATCH` optimization, this strategy is now also highly performant. **Empirically, (before separating the label type specific matching) this strategy had been found to be  significantly slower (approximately 5 times slower on a 8-core system) than `parallel-create` or "paralle-merge" for ingesting `:DEFINES` relationships in large projects like the Linux kernel.** This is likely due to the overhead of repeated `MATCH` operations within each `UNWIND` transaction, which can be less efficient than `apoc.periodic.iterate`'s parallel sub-transactions for this specific type of relationship and data volume.
 
 ## 4. Performance Tuning Arguments
 

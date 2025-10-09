@@ -11,6 +11,9 @@ import argparse
 import logging
 import os
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Iterable, Callable, List
+from tqdm import tqdm
 
 from neo4j_manager import Neo4jManager
 from clangd_index_yaml_parser import SymbolParser, ParallelSymbolParser
@@ -30,12 +33,31 @@ class RagGenerator:
     - Single-item processing methods.
     """
 
-    def __init__(self, neo4j_mgr: Neo4jManager, project_path: str, span_provider: FunctionSpanProvider, llm_client: LlmClient, embedding_client: EmbeddingClient):
+    def __init__(self, neo4j_mgr: Neo4jManager, project_path: str, span_provider: FunctionSpanProvider, 
+                 llm_client: LlmClient, embedding_client: EmbeddingClient, 
+                 num_local_workers: int, num_remote_workers: int):
         self.neo4j_mgr = neo4j_mgr
         self.project_path = os.path.abspath(project_path)
         self.span_provider = span_provider
         self.llm_client = llm_client
         self.embedding_client = embedding_client
+        self.num_local_workers = num_local_workers
+        self.num_remote_workers = num_remote_workers
+
+    def _parallel_process(self, items: Iterable, process_func: Callable, max_workers: int, desc: str):
+        """Processes items in parallel using a thread pool and shows a progress bar."""
+        if not items:
+            return
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_func, item): item for item in items}
+            
+            for future in tqdm(as_completed(futures), total=len(items), desc=desc):
+                try:
+                    future.result()
+                except Exception as e:
+                    item = futures[future]
+                    logging.error(f"Error processing item {item}: {e}", exc_info=True)
 
     def summarize_code_graph(self):
         """Main orchestrator method to run all summarization passes."""
@@ -54,18 +76,26 @@ class RagGenerator:
             logging.warning("Span provider found no functions to process. Exiting Pass 1.")
             return
 
-        functions_to_process = self._get_functions_for_pass1(matched_ids)
+        functions_to_process = self._get_functions_for_code_summary(matched_ids)
+        if not functions_to_process:
+            logging.info("No functions require summarization in Pass 1.")
+            return
+            
         logging.info(f"Found {len(functions_to_process)} functions with spans that need summaries.")
 
-        for func in functions_to_process:
-            try:
-                self._process_one_function_for_code_summary(func)
-            except Exception as e:
-                logging.error(f"Failed to process function {func.get('id')}: {e}")
+        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+        logging.info(f"Using {max_workers} parallel workers for Pass 1.")
+
+        self._parallel_process(
+            items=functions_to_process,
+            process_func=self._process_one_function_for_code_summary,
+            max_workers=max_workers,
+            desc="Pass 1: Code Summaries"
+        )
 
         logging.info("--- Finished Pass 1 ---")
 
-    def _get_functions_for_pass1(self, function_ids: list[str]) -> list[dict]:
+    def _get_functions_for_code_summary(self, function_ids: list[str]) -> list[dict]:
         query = """
         MATCH (n:FUNCTION)
         WHERE n.id IN $function_ids AND n.codeSummary IS NULL
@@ -75,7 +105,8 @@ class RagGenerator:
 
     def _process_one_function_for_code_summary(self, func: dict):
         func_id = func['id']
-        logging.info(f"Processing function for code summary: {func_id}")
+        # TQDM provides progress, so individual logging can be reduced.
+        # logging.info(f"Processing function for code summary: {func_id}")
         body_span = self.span_provider.get_body_span(func_id)
         if not body_span: return
         source_code = self._get_source_code_from_span(body_span)
@@ -87,30 +118,41 @@ class RagGenerator:
 
         update_query = "MATCH (n:FUNCTION {id: $id}) SET n.codeSummary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": summary})
-        logging.info(f"-> Stored codeSummary for function {func_id}")
+        # logging.info(f"-> Stored codeSummary for function {func_id}")
 
     # --- Pass 2 Methods ---
     def summarize_functions_with_context(self):
         """PASS 2: Generates a final, context-aware summary for each function."""
         logging.info("\n--- Starting Pass 2: Summarizing Functions With Context ---")
         
-        functions_to_process = self._get_functions_for_pass2()
+        functions_to_process = self._get_functions_for_contextual_summary()
+        if not functions_to_process:
+            logging.info("No functions require summarization in Pass 2.")
+            return
+
         logging.info(f"Found {len(functions_to_process)} functions that need a final summary.")
 
-        for func in functions_to_process:
-            try:
-                self._process_one_function_for_contextual_summary(func['id'])
-            except Exception as e:
-                logging.error(f"Failed to process function {func.get('id')}: {e}")
+        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+        logging.info(f"Using {max_workers} parallel workers for Pass 2.")
+
+        # Extract just the function IDs to pass to the parallel processor
+        func_ids = [func['id'] for func in functions_to_process]
+
+        self._parallel_process(
+            items=func_ids,
+            process_func=self._process_one_function_for_contextual_summary,
+            max_workers=max_workers,
+            desc="Pass 2: Context Summaries"
+        )
         
         logging.info("--- Finished Pass 2 ---")
 
-    def _get_functions_for_pass2(self) -> list[dict]:
+    def _get_functions_for_contextual_summary(self) -> list[dict]:
         query = "MATCH (n:FUNCTION) WHERE n.codeSummary IS NOT NULL AND n.summary IS NULL RETURN n.id AS id"
         return self.neo4j_mgr.execute_read_query(query)
 
     def _process_one_function_for_contextual_summary(self, func_id: str):
-        logging.info(f"Processing function for contextual summary: {func_id}")
+        # logging.info(f"Processing function for contextual summary: {func_id}")
         context_query = """
         MATCH (n:FUNCTION {id: $id})
         OPTIONAL MATCH (caller:FUNCTION)-[:CALLS]->(n)
@@ -133,7 +175,7 @@ class RagGenerator:
 
         update_query = "MATCH (n:FUNCTION {id: $id}) SET n.summary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": final_summary})
-        logging.info(f"-> Stored final summary for function {func_id}")
+        # logging.info(f"-> Stored final summary for function {func_id}")
 
     def _build_contextual_prompt(self, code_summary, caller_summaries, callee_summaries) -> str:
         caller_text = ", ".join([s for s in caller_summaries if s]) or "none"
@@ -146,26 +188,37 @@ class RagGenerator:
             f"Describe it in one concise sentence."
         )
 
-    # --- Pass 3 Methods ---
+    # --- Pass 3 & 4 Methods ---
     def summarize_files_and_folders(self):
-        """PASS 3: Generates summaries for files and folders via roll-up."""
-        logging.info("\n--- Starting Pass 3: Summarizing Files and Folders ---")
-        self._summarize_all_files()
-        self._summarize_all_folders()
+        """Generates summaries for files and folders via roll-up."""
+        logging.info("\n--- Starting File and Folder Summarization ---")
+        self._summarize_all_files()    # Pass 3
+        self._summarize_all_folders()  # Pass 4
         self._summarize_project()
-        logging.info("--- Finished Pass 3 ---")
+        logging.info("--- Finished File and Folder Summarization ---")
 
     def _summarize_all_files(self):
-        logging.info("Summarizing all FILE nodes...")
-        files = self.neo4j_mgr.execute_read_query("MATCH (f:FILE) WHERE f.summary IS NULL RETURN f.path AS path")
-        for file in files:
-            try:
-                self._summarize_one_file(file['path'])
-            except Exception as e:
-                logging.error(f"Failed to summarize file {file.get('path')}: {e}")
+        logging.info("\n--- Starting Pass 3: Summarizing Files ---")
+        files_to_process = self.neo4j_mgr.execute_read_query("MATCH (f:FILE) WHERE f.summary IS NULL RETURN f.path AS path")
+        if not files_to_process:
+            logging.info("No files require summarization.")
+            return
+
+        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+        logging.info(f"Using {max_workers} parallel workers for file summarization.")
+
+        file_paths = [file['path'] for file in files_to_process]
+
+        self._parallel_process(
+            items=file_paths,
+            process_func=self._summarize_one_file,
+            max_workers=max_workers,
+            desc="Pass 3: File Summaries"
+        )
+        logging.info("--- Finished Pass 3 ---")
 
     def _summarize_one_file(self, file_path: str):
-        logging.info(f"Summarizing file: {file_path}")
+        # logging.info(f"Summarizing file: {file_path}")
         query = """
         MATCH (f:FILE {path: $path})-[:DEFINES]->(func:FUNCTION)
         WHERE func.summary IS NOT NULL
@@ -181,25 +234,40 @@ class RagGenerator:
 
         update_query = "MATCH (f:FILE {path: $path}) SET f.summary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"path": file_path, "summary": summary})
-        logging.info(f"-> Stored summary for file {file_path}")
+        # logging.info(f"-> Stored summary for file {file_path}")
 
     def _summarize_all_folders(self):
-        logging.info("Summarizing all FOLDER nodes (bottom-up)...")
-        # Since PROJECT is not a FOLDER, this query gets all sub-folders
+        logging.info("\n--- Starting Pass 4: Summarizing Folders (bottom-up) ---")
         query = "MATCH (f:FOLDER) WHERE f.summary IS NULL RETURN f.path AS path, f.name as name"
-        folders = self.neo4j_mgr.execute_read_query(query)
-        
-        # Sort by depth to ensure children are summarized before parents
-        sorted_folders = sorted(folders, key=lambda f: f['path'].count(os.sep), reverse=True)
+        folders_to_process = self.neo4j_mgr.execute_read_query(query)
+        if not folders_to_process:
+            logging.info("No folders require summarization.")
+            return
 
-        for folder in sorted_folders:
-            try:
-                self._summarize_one_folder(folder['path'], folder['name'])
-            except Exception as e:
-                logging.error(f"Failed to summarize folder {folder.get('path')}: {e}")
+        # Group folders by depth for level-by-level parallel processing
+        folders_by_depth = {}
+        for folder in folders_to_process:
+            depth = folder['path'].count(os.sep)
+            if depth not in folders_by_depth:
+                folders_by_depth[depth] = []
+            folders_by_depth[depth].append(folder)
+
+        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+        logging.info(f"Using {max_workers} parallel workers for folder summarization.")
+
+        # Process level by level, from deepest to shallowest
+        for depth in sorted(folders_by_depth.keys(), reverse=True):
+            folders_at_this_level = folders_by_depth[depth]
+            self._parallel_process(
+                items=folders_at_this_level,
+                process_func=lambda f: self._summarize_one_folder(f['path'], f['name']),
+                max_workers=max_workers,
+                desc=f"Pass 4: Folder Summaries (Depth {depth})"
+            )
+        logging.info("--- Finished Pass 4 ---")
 
     def _summarize_one_folder(self, folder_path: str, folder_name: str):
-        logging.info(f"Summarizing folder: {folder_path}")
+        # logging.info(f"Summarizing folder: {folder_path}")
         query = """
         MATCH (parent:FOLDER {path: $path})-[:CONTAINS]->(child)
         WHERE child.summary IS NOT NULL
@@ -215,7 +283,7 @@ class RagGenerator:
 
         update_query = "MATCH (f:FOLDER {path: $path}) SET f.summary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"path": folder_path, "summary": summary})
-        logging.info(f"-> Stored summary for folder {folder_path}")
+        # logging.info(f"-> Stored summary for folder {folder_path}")
 
     def _summarize_project(self):
         """Summarizes the top-level PROJECT node."""
@@ -239,19 +307,28 @@ class RagGenerator:
         self.neo4j_mgr.execute_autocommit_query(update_query, {"summary": summary})
         logging.info("-> Stored summary for PROJECT node.")
 
-    # --- Pass 4 Methods ---
+    # --- Pass 5 Methods ---
     def generate_embeddings(self):
-        """PASS 4: Generates and stores embeddings for all generated summaries."""
-        logging.info("\n--- Starting Pass 4: Generating Embeddings ---")
+        """PASS 5: Generates and stores embeddings for all generated summaries."""
+        logging.info("\n--- Starting Pass 5: Generating Embeddings ---")
         nodes_to_embed = self._get_nodes_for_embedding()
+        if not nodes_to_embed:
+            logging.info("No nodes require embedding.")
+            return
+
         logging.info(f"Found {len(nodes_to_embed)} nodes with summaries to embed.")
 
-        for node in nodes_to_embed:
-            try:
-                self._embed_one_node(node)
-            except Exception as e:
-                logging.error(f"Failed to embed node {node.get('elementId')}: {e}")
-        logging.info("--- Finished Pass 4 ---")
+        max_workers = self.num_local_workers if self.embedding_client.is_local else self.num_remote_workers
+        logging.info(f"Using {max_workers} parallel workers for Pass 5.")
+
+        self._parallel_process(
+            items=nodes_to_embed,
+            process_func=self._embed_one_node,
+            max_workers=max_workers,
+            desc="Pass 5: Embeddings"
+        )
+
+        logging.info("--- Finished Pass 5 ---")
 
     def _get_nodes_for_embedding(self) -> list[dict]:
         # This query finds any node with a final summary but no embedding yet.
@@ -267,7 +344,7 @@ class RagGenerator:
     def _embed_one_node(self, node: dict):
         element_id = node['elementId']
         summary = node['summary']
-        logging.info(f"Generating embedding for node: {element_id}")
+        # logging.info(f"Generating embedding for node: {element_id}")
 
         embedding = self.embedding_client.generate_embedding(summary)
         if not embedding:
@@ -279,7 +356,7 @@ class RagGenerator:
         SET n.summaryEmbedding = $embedding
         """
         self.neo4j_mgr.execute_autocommit_query(update_query, {"elementId": element_id, "embedding": embedding})
-        logging.info(f"-> Stored summaryEmbedding for node {element_id}")
+        # logging.info(f"-> Stored summaryEmbedding for node {element_id}")
 
     # --- Utility Methods ---
     def _get_source_code_from_span(self, span: dict) -> str:
@@ -314,6 +391,10 @@ def main():
     parser.add_argument('--api', choices=['openai', 'deepseek', 'ollama'], default='deepseek', help='The LLM API to use for summarization.')
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
+    parser.add_argument('--num-local-workers', type=int, default=default_workers,
+                        help=f'Number of parallel workers for local LLMs/embedding models. (default: {default_workers})')
+    parser.add_argument('--num-remote-workers', type=int, default=100,
+                        help='Number of parallel workers for remote LLM/embedding APIs. (default: 100)')
     args = parser.parse_args()
 
     try:
@@ -333,13 +414,21 @@ def main():
             symbol_parser.build_cross_references()
 
             span_provider = FunctionSpanProvider(args.project_path, symbol_parser)
-            generator = RagGenerator(neo4j_mgr, args.project_path, span_provider, llm_client, embedding_client)
+            generator = RagGenerator(
+                neo4j_mgr, 
+                args.project_path, 
+                span_provider, 
+                llm_client, 
+                embedding_client,
+                args.num_local_workers,
+                args.num_remote_workers
+            )
             
             # Run all summarization and embedding passes
             generator.summarize_code_graph()
 
-            # Finally, create the vector indexes
-            neo4j_mgr.create_vector_indexes()
+            # Finally, create the vector indices
+            neo4j_mgr.create_vector_indices()
 
     except Exception as e:
         logging.critical(f"A critical error occurred: {e}")

@@ -40,15 +40,26 @@ def main():
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
     parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--cypher-tx-size', type=int, default=2000, 
+    parser.add_argument('--cypher-tx-size', type=int, default=2000,
                         help='Target items (nodes/relationships) per server-side transaction (default: 2000).')
-    parser.add_argument('--ingest-batch-size', type=int, default=None, 
+    parser.add_argument('--ingest-batch-size', type=int, default=None,
                         help='Target items (nodes/relationships) per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
     parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-create',
                         help='Strategy for ingesting DEFINES relationships. (default: parallel-create)')
     parser.add_argument('--keep-orphans', action='store_true',
                       help='Keep orphan nodes in the graph (skip cleanup)')
     parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
+    
+    # RAG generation arguments
+    rag_group = parser.add_argument_group('RAG Generation (Optional)')
+    rag_group.add_argument('--generate-summary', action='store_true',
+                        help='Generate AI summaries and embeddings for the code graph.')
+    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama'], default='deepseek',
+                        help='The LLM API to use for summarization.')
+    rag_group.add_argument('--num-local-workers', type=int, default=default_workers,
+                        help=f'Number of parallel workers for local LLMs/embedding models. (default: {default_workers})')
+    rag_group.add_argument('--num-remote-workers', type=int, default=100,
+                        help='Number of parallel workers for remote LLM/embedding APIs. (default: 100)')
     args = parser.parse_args()
 
     # Set default for ingest_batch_size if not provided
@@ -56,6 +67,7 @@ def main():
         args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
 
     debugger = Debugger(turnon=args.debug_memory)
+    span_provider = None  # Initialize variable to hold the span_provider instance
 
     try:
         # --- Phase 0: Load, Parse, and Link Symbols ---
@@ -78,7 +90,7 @@ def main():
         symbol_parser.build_cross_references()
         logger.info("--- Finished Phase 0 ---")
 
-        # --- Main Processing --- 
+        # --- Main Processing ---
         path_manager = PathManager(args.project_path)
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection():
@@ -111,20 +123,20 @@ def main():
 
             # --- Phase 3: Ingest Call Graph ---
             logger.info("\n--- Starting Phase 3: Ingesting Call Graph ---")
-            
+
             if symbol_parser.has_container_field:
                 extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
                 logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
             else:
                 logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-                # Use the new, refactored span provider to enrich the symbol data in-place.
                 from function_span_provider import FunctionSpanProvider
-                FunctionSpanProvider(args.project_path, symbol_parser, args.log_batch_size)
+                # If created here, store the instance in our variable for reuse
+                span_provider = FunctionSpanProvider(args.project_path, symbol_parser, args.log_batch_size)
                 extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
-            
+
             call_relations = extractor.extract_call_relationships()
             extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
-            
+
             del extractor, call_relations
             gc.collect()
             logger.info("--- Finished Phase 3 ---")
@@ -137,6 +149,39 @@ def main():
                 logger.info("--- Finished Phase 4 ---")
             else:
                 logger.info("\n--- Skipping Phase 4: Keeping orphan nodes as requested ---")
+
+            # --- Pass 5: Generate Summaries and Embeddings (if requested) ---
+            if args.generate_summary:
+                logger.info("\n--- Starting Pass 5: Generating Summaries and Embeddings ---")
+                from code_graph_rag_generator import RagGenerator
+                from llm_client import get_llm_client, get_embedding_client
+
+                # Check if the provider was already created in Pass 3
+                if span_provider is None:
+                    logger.info("Creating new FunctionSpanProvider for summary generation.")
+                    from function_span_provider import FunctionSpanProvider
+                    span_provider = FunctionSpanProvider(args.project_path, symbol_parser)
+                else:
+                    logger.info("Reusing FunctionSpanProvider created in Pass 3.")
+
+                # Initialize clients
+                llm_client = get_llm_client(args.llm_api)
+                embedding_client = get_embedding_client(args.llm_api)
+
+                # Use the guaranteed-to-exist span_provider
+                rag_generator = RagGenerator(
+                    neo4j_mgr=neo4j_mgr,
+                    project_path=args.project_path,
+                    span_provider=span_provider,
+                    llm_client=llm_client,
+                    embedding_client=embedding_client,
+                    num_local_workers=args.num_local_workers,
+                    num_remote_workers=args.num_remote_workers
+                )
+                rag_generator.summarize_code_graph()
+                neo4j_mgr.create_vector_indices()
+                logger.info("--- Finished Pass 5 ---")
+
 
         del symbol_parser, path_manager
         gc.collect()
