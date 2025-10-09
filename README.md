@@ -1,6 +1,13 @@
 # Source code graph RAG based on Clangd index
 
 This project provides a pipeline to ingest `clangd` index YAML files into a Neo4j graph database, generate file structure hierarchy and function call graph, then use LLM to generate function/folder summaries and vector embeddings for the code graph, creating a rich knowledge graph RAG of a C/C++ codebase. This graph can then be used for various software engineering tasks like code search, dependency analysis, and refactoring.
+What it does:
+   * The project ingests clangd index files into a Neo4j graph database.
+   * It builds a code graph with file/folder structure, symbol definitions, and a call graph.
+   * Has a RAG generation pass enriches the graph with AI-generated summaries and embeddings.
+   * The pipeline is designed for performance, with parallel processing and optimized database interactions.
+   * The system is modular, with different Python scripts responsible for specific passes of the ingestion process.
+   * It can adapt to different clangd indexer versions.
 
 ## Architecture Overview
 
