@@ -2,7 +2,11 @@
 
 ## 1. Role in the Pipeline
 
-This script acts as a **library module** for the main `clangd_code_graph_builder.py` orchestrator. Its primary responsibility is to build the structural foundation of the code graph in Neo4j. It creates the physical file system hierarchy and the logical code symbols defined within them.
+This script acts as both a **library module** and a **standalone tool**. Its primary responsibility is to build the structural foundation of the code graph in Neo4j by creating the physical file system hierarchy (`:PROJECT`, `:FOLDER`, `:FILE`) and the logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) defined within them.
+
+As a library, it's used by the main `clangd_code_graph_builder.py` orchestrator to execute Passes 1 and 2 of the ingestion pipeline.
+
+As a standalone tool, it can be used to directly parse a `clangd` index and populate a Neo4j database with the structural nodes and `:DEFINES` relationships. See the "Standalone Usage" section for details.
 
 It is designed to work on a pre-parsed, in-memory collection of `Symbol` objects provided by the `SymbolParser`.
 
@@ -10,14 +14,39 @@ It provides two main classes:
 -   `PathProcessor`: Creates all `:PROJECT`, `:FOLDER`, and `:FILE` nodes.
 -   `SymbolProcessor`: Creates nodes for code symbols (e.g., `:FUNCTION`, `:DATA_STRUCTURE`) and the `:DEFINES` relationships connecting them to their files.
 
-## 2. `PathProcessor`
+## 2. Standalone Usage
+
+The script can be run directly to perform a full ingestion of file structure and symbol definitions. This is useful for debugging or for a partial ingestion that doesn't require the call graph.
+
+```bash
+# Example: Ingest symbols using parallel-create for DEFINES relationships
+python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/ \
+    --defines-generation parallel-create \
+    --num-parse-workers 8
+```
+
+**All Options:**
+
+*   `index_file`: Path to the clangd index YAML file (or a `.pkl` cache file).
+*   `project_path`: Root path of the project.
+*   `--defines-generation`: Strategy for ingesting `:DEFINES` relationships (`unwind-create`, `parallel-merge`, `parallel-create`). Default: `parallel-create`.
+*   `--num-parse-workers`: Number of parallel workers for parsing the YAML index.
+*   `--cypher-tx-size`: Target items (nodes/relationships) per server-side transaction.
+*   `--ingest-batch-size`: Target items per client-side submission.
+*   `--log-batch-size`: Log progress every N items.
+
+---
+*The following sections describe the library's internal logic.*
+
+## 3. `PathProcessor`
 
 This class is responsible for Pass 1 of the ingestion pipeline. Its algorithm is straightforward:
 
 1.  **Discover Paths**: It iterates through every symbol from the `SymbolParser`, inspects its declaration and definition locations, and discovers every unique, in-project file and folder path.
-2.  **`UNWIND`-based Ingestion**: It uses highly efficient, `UNWIND`-based Cypher queries to first `MERGE` all folder and file nodes in bulk, and then `MERGE` the `CONTAINS` relationships between them. This minimizes network round trips to the database.
+2.  **`UNWIND`-based Ingestion**: It uses highly efficient, `UNWIND`-based Cypher queries to first `MERGE` all folder and file nodes in bulk, and then `MERGE` the `CONTAINS` relationships between them.
+This minimizes network round trips to the database.
 
-## 3. `SymbolProcessor`
+## 4. `SymbolProcessor`
 
 This class is responsible for Pass 2 of the ingestion pipeline. It first creates the nodes for code symbols and then creates the `:DEFINES` relationships. The relationship creation logic is highly sophisticated to balance performance with correctness.
 
@@ -63,7 +92,7 @@ This optimization dramatically reduced the ingestion time for `:DEFINES` relatio
 -   **Algorithm**: This strategy uses direct `UNWIND` with the `CREATE` Cypher clause for relationships, batching at the client side. It avoids `apoc.periodic.iterate`.
 -   **Performance Note**: While initially slower before the type-specific `MATCH` optimization, this strategy is now also highly performant. **Empirically, (before separating the label type specific matching) this strategy had been found to be  significantly slower (approximately 5 times slower on a 8-core system) than `parallel-create` or "paralle-merge" for ingesting `:DEFINES` relationships in large projects like the Linux kernel.** This is likely due to the overhead of repeated `MATCH` operations within each `UNWIND` transaction, which can be less efficient than `apoc.periodic.iterate`'s parallel sub-transactions for this specific type of relationship and data volume.
 
-## 4. Performance Tuning Arguments
+## 5. Performance Tuning Arguments
 
 The script's behavior can be fine-tuned with several arguments:
 -   `--defines-generation`: Specifies the strategy for ingesting `:DEFINES` relationships.

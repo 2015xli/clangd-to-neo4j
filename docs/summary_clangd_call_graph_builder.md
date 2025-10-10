@@ -2,11 +2,37 @@
 
 ## 1. Role in the Pipeline
 
-This script acts as a **library module** for the main `clangd_code_graph_builder.py` orchestrator. Its sole responsibility is to perform Pass 3 of the ingestion pipeline: identifying all function call relationships and generating the query to create them in Neo4j.
+This script acts as both a **library module** and a **standalone tool**. Its primary responsibility is to perform Pass 3 of the ingestion pipeline: identifying all function call relationships (`:CALLS`) and either ingesting them into Neo4j or generating the Cypher queries to do so.
 
-It provides a set of classes (`BaseClangdCallGraphExtractor`, `ClangdCallGraphExtractorWithContainer`, `ClangdCallGraphExtractorWithoutContainer`) that encapsulate this logic.
+As a library, it's used by the main `clangd_code_graph_builder.py` orchestrator. It provides a set of classes (`BaseClangdCallGraphExtractor`, `ClangdCallGraphExtractorWithContainer`, `ClangdCallGraphExtractorWithoutContainer`) that encapsulate the extraction logic.
 
-## 2. Core Logic
+As a standalone tool, it can be used to extract the call graph from a `clangd` index and either ingest it directly into an existing Neo4j database or save the Cypher queries to a file for later use. See the "Standalone Usage" section for details.
+
+## 2. Standalone Usage
+
+The script can be run directly to perform call graph extraction. This is useful for debugging the call graph logic or for regenerating only the `:CALLS` relationships in the database.
+
+```bash
+# Example: Extract call graph and ingest directly into Neo4j
+python3 clangd_call_graph_builder.py /path/to/index.yaml /path/to/project/ --ingest
+
+# Example: Extract call graph and save the Cypher queries to a .cql file
+python3 clangd_call_graph_builder.py /path/to/index.yaml /path/to/project/
+```
+
+**All Options:**
+
+*   `input_file`: Path to the clangd index YAML file (or a `.pkl` cache file).
+*   `span_path`: Path to a pre-computed spans YAML file, or a project directory to scan for spans (required for older clangd index formats).
+*   `--ingest`: If set, ingest the call graph directly into Neo4j. Otherwise, a `generated_call_graph_cypher_queries.cql` file will be created.
+*   `--stats`: Show detailed statistics about the extracted call graph.
+*   `--num-parse-workers`: Number of parallel workers for parsing the YAML index.
+*   `--ingest-batch-size`: Batch size for ingesting call relations.
+
+---
+*The following sections describe the library's internal logic.*
+
+## 3. Core Logic
 
 The fundamental challenge in building a call graph is that the `clangd` index provides call sites, but doesn't explicitly link them to the function that contains them (the caller). This module addresses this by offering two distinct strategies, adapting to the format of the clangd index.
 
@@ -48,7 +74,7 @@ This strategy is used when `symbol_parser.has_container_field` is `False`.
 
 Both classes are designed to be memory-efficient. They delete large intermediate data structures (like the span data and the spatial index) as soon as they are no longer needed, and trigger the garbage collector to keep the memory footprint low.
 
-## 3. Output
+## 4. Output
 
 Once all call relations have been discovered, the `get_call_relation_ingest_query` method (from the base class) is called.
 

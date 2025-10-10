@@ -142,13 +142,13 @@ class SymbolParser:
         if self.index_file_path.endswith('.pkl'):
             self._load_cache_file(self.index_file_path)
             return # Loading complete
-        elif os.path.exists(cache_path):
-            logger.info(f"Found existing cache file: {cache_path}")
-            logger.info("To force re-parsing the YAML, delete the .pkl file and run again.")
+        elif os.path.exists(cache_path) and os.path.getmtime(cache_path) > os.path.getmtime(self.index_file_path):
+            logger.info(f"Found valid cache file: {cache_path}")
+            logger.info("To force re-parsing the YAML, delete the .pkl file or touch the YAML file and run again.")
             self._load_cache_file(cache_path)
             return # Loading complete
 
-        # --- Cache not found, proceed with YAML parsing ---
+        # --- Cache not found or is outdated, proceed with YAML parsing ---
         if num_workers > 1:
             logger.info(f"Using parallel parser with {num_workers} workers.")
             self._parallel_parse(num_workers)

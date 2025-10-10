@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 """
 Extract function spans from C source/header files using tree-sitter.
 Output: YAML string or Python list of function spans, grouped by file.
-
+Note, the numbers are 0-based, the same as in clangd index.
 --- !FileFunctionSpans
 FileURI: file:///home/user/demo.c
 Functions:
@@ -85,7 +85,37 @@ class SpanExtractor:
                     ident.start_point[1]:ident.end_point[1]
                 ]
 
-                body = node.child_by_field_name("body")
+                #body = node.child_by_field_name("body")
+                # 
+                # Function body including "{ statements }"
+                # Full function body including "return_type name(signature) { statements }"
+                # This is the smallest change to keep the code functional, using full body to replace real body.
+                # 
+                # BodyLocation is used in two places:
+                # 1. In call graph builder when clangd yaml index file !Refs does not have container field.
+                #    We use body location (scope) to check if a callsite (callee's name) stays within the function body.
+                #    With this change, the function body includes not only "{ statements }", but also the leading type-name-sig.
+                #    This is not ideal, but ok, because a callee's location can never appear in the leading part.
+                #    Ideal solution is to keep the original real body location.
+                # 2. In code rag generator when we need to extract function body code for llm to summarize.
+                #    We use body location start/end lines (no columns) to get the function body source code.
+                #    With original real body location, this function source may miss the leading part, like in "int foo()\n{...}"
+                #    That's not desirable for llm to have a full picture. This is why I made this change.
+                #    There are three solutions:
+                #    2.a. If we keep the original body location here, we need introduce another location property, such as,
+                #    FunctionFullLocation = node.start_point, node.end_point. or FunctionHeadLocation
+                #    2.b. We introduce a seperata Source property that keeps the source code of full function.
+                #    This is not a bad solution, but may bloat the database with virtually a full copy of the project source.
+                #    Will do it as an option --include-source if we really want, like,
+                #    function_source = source[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
+                #    Including source code needs to exclude any access permission or copyright issue.
+                #    We can then have:
+                #    if include_source:
+                #        body = node.child_by_field_name("body")
+                #    else: 
+                #        body = node
+                body = node 
+
 
                 functions.append({
                     "Name": name,

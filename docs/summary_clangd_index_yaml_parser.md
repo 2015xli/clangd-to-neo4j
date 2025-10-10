@@ -6,9 +6,21 @@ This script serves as the **centralized parser** for the clangd index YAML files
 
 Its primary responsibility is to read a clangd index YAML file and transform its contents into an in-memory collection of structured `Symbol` objects, ready for the subsequent ingestion passes.
 
-## 2. Core Logic and Parsing Strategies
+## 2. Core Logic and Unified Parser
 
-The module provides two main classes to handle different performance needs: `SymbolParser` for single-threaded parsing and `ParallelSymbolParser` for high-performance, multi-process parsing.
+The module has been refactored to use a single, unified `SymbolParser` class that intelligently handles both single-threaded and parallel parsing. This significantly simplifies the API for all callers.
+
+### Simplified API
+
+Previously, callers had to choose between `SymbolParser` and `ParallelSymbolParser`. Now, they simply instantiate the `SymbolParser` class and call the `parse()` method. The parser automatically uses a parallel, multi-process approach if the `--num-parse-workers` argument is greater than 1.
+
+### Caching Mechanism
+
+To dramatically improve performance on subsequent runs, the `SymbolParser` now implements a caching mechanism.
+
+*   **How it works**: After a YAML file is successfully parsed, the resulting collection of `Symbol` objects is serialized to a `.pkl` (pickle) file in the same directory as the source YAML file.
+*   **Cache Invalidation**: The parser checks the modification time of the source YAML file. If the `.pkl` cache file exists and is newer than the YAML file, the parser loads the data directly from the cache, bypassing the expensive parsing process entirely.
+*   **Benefit**: This makes re-running the ingestion pipeline on the same codebase almost instantaneous after the initial parse.
 
 ### Data Classes
 
@@ -19,40 +31,25 @@ This module defines all the essential data classes that represent the elements o
 *   **`Symbol`**: The core entity, representing a function, variable, class, etc., with its ID, name, kind, declaration/definition locations, and other properties.
 *   ... and other helper data classes.
 
-### Strategy 1: `SymbolParser` (Single-Threaded)
+### Parsing Strategy (Internal)
 
--   **Use Case**: Simpler projects, or when multi-processing is not desired (i.e., `--num-parse-workers=1`).
--   **Algorithm**:
-    1.  Reads the entire YAML file into an in-memory string, sanitizing content (e.g., replacing tabs) along the way.
-    2.  Uses `yaml.safe_load_all` to parse the string into a list of documents.
-    3.  It performs two passes over this list:
-        *   **Pass 1**: Collects all `!Symbol` documents to build a dictionary of `Symbol` objects.
-        *   **Pass 2**: Collects all `!Refs` documents into a temporary list (`unlinked_refs`).
-    4.  Finally, `build_cross_references()` is called to link the references to the symbols.
+Internally, the `SymbolParser` uses a sophisticated "map-reduce" style approach with a `ProcessPoolExecutor` when parallelism is enabled.
 
-### Strategy 2: `ParallelSymbolParser` (Multi-Process, Default)
+1.  **Phase 1: Chunking (Main Process)**
+    *   The parser first performs a quick scan of the entire index file to count the number of YAML documents (`---`).
+    *   Based on this count and the number of workers, it calculates the optimal number of documents per chunk.
+    *   It then reads the file, creating large in-memory string chunks, each containing a set number of YAML documents.
 
--   **Use Case**: Large codebases (like the Linux kernel) where parsing is a significant bottleneck. This is the default strategy when `--num-parse-workers` > 1.
--   **Algorithm**: This class uses a sophisticated "map-reduce" style approach with a `ProcessPoolExecutor` to dramatically speed up parsing. The process is carefully designed to be both fast and correct.
+2.  **Phase 2: Parallel Parsing (Worker Processes)**
+    *   The main process distributes the YAML string chunks to a pool of worker processes.
+    *   Each worker parses its chunk and returns its own collection of `Symbol` objects and raw `!Refs` documents.
 
-    1.  **Phase 1: Chunking (Main Process)**
-        *   The `_sanitize_and_chunk_in_memory` method first performs a quick scan of the entire index file just to count the number of YAML documents (`---`).
-        *   Based on this count and the number of workers, it calculates the optimal number of documents per chunk.
-        *   It then reads the file a second time, creating large in-memory string chunks, each containing a set number of YAML documents. This avoids parsing the YAML in the main process.
+3.  **Phase 3: Merging (Main Process)**
+    *   The main process collects the results from all workers, merging the dictionaries of `Symbol` objects and the lists of `!Refs` documents.
 
-    2.  **Phase 2: Parallel Parsing (Worker Processes)**
-        *   The main process uses a `ProcessPoolExecutor` to distribute the YAML string chunks to a pool of worker processes.
-        *   The `_parse_worker` function runs in each worker. It instantiates a simple `SymbolParser` and parses only the chunk of text it received.
-        *   Each worker returns its own collection of parsed `Symbol` objects and a list of raw `!Refs` documents.
-
-    3.  **Phase 3: Merging (Main Process)**
-        *   The main process collects the results from all workers.
-        *   It merges the dictionaries of `Symbol` objects and extends the central list of `unlinked_refs`.
-
-    4.  **Phase 4: Cross-Reference Linking (Main Process)**
-        *   After all parallel work is complete, the `build_cross_references()` method is called **sequentially** in the main process.
-        *   This final, crucial step iterates through the complete list of `unlinked_refs` and attaches them to the appropriate `Symbol` objects in the master dictionary, creating the final, fully-linked in-memory representation of the code graph.
+4.  **Phase 4: Cross-Reference Linking (Main Process)**
+    *   After all parsing is complete, this final, crucial step iterates through the complete list of `!Refs` and attaches them to the appropriate `Symbol` objects, creating the final, fully-linked in-memory representation of the code graph.
 
 ### `Container` Field Detection
 
-Both parsers automatically detect the presence of the `Container` field in `!Refs` documents (introduced in clangd-indexer 21.x). This is used by the `ClangdCallGraphExtractor` to select the most efficient call graph extraction strategy.
+The parser automatically detects the presence of the `Container` field in `!Refs` documents (introduced in clangd-indexer 21.x). This is used by the `ClangdCallGraphExtractor` to select the most efficient call graph extraction strategy.
