@@ -9,7 +9,8 @@
             "type": "debugpy",
             "request": "launch",
             "program": "clangd_call_graph_builder.py",
-            "args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10", "--stats"]
+            //"args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10", "--stats"]
+            "args": ["../wsl2-graph-built-clang20.1.8/linux-clangd.yaml", "~/Public/microsoft-WSL2-Linux-Kernel-427645e/"]
         },
         {
             "name": "Python Debugger: Code graph builder",

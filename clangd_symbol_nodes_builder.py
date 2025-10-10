@@ -223,7 +223,7 @@ class SymbolProcessor:
 
                 print(".", end="", flush=True)
             print(flush=True)
-            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
+            logger.info(f"  Total FUNCTIONS DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
         total_rels_created = 0

@@ -171,7 +171,7 @@ class SpanExtractor:
         del source
         del tree
         del source_lines
-        gc.collect()
+        # gc.collect()  # to slow if lots of files. Should be fine to collect later together.
 
         if not functions:
             return "" if format == "yaml" else {}
