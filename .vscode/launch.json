@@ -17,7 +17,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "clangd_code_graph_builder.py",
-            "args": ["example/example-clangd-index-with-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10"]
+            "args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10"]
         }
 
     ]

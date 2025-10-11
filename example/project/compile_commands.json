@@ -6,7 +6,7 @@
             "-std=c99",
             "main.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "main.c"
     },
     {
@@ -16,7 +16,7 @@
             "-std=c99",
             "category.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "category.c"
     },
     {
@@ -26,7 +26,7 @@
             "-std=c99",
             "customer.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "customer.c"
     },
     {
@@ -36,7 +36,7 @@
             "-std=c99",
             "report.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "report.c"
     },
     {
@@ -46,7 +46,7 @@
             "-std=c99",
             "promotion.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "promotion.c"
     },
     {
@@ -56,7 +56,7 @@
             "-std=c99",
             "sub/purchase.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "sub/purchase.c"
     },
     {
@@ -66,7 +66,7 @@
             "-std=c99",
             "sub/pos.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "sub/pos.c"
     },
     {
@@ -76,7 +76,7 @@
             "-std=c99",
             "systemcall.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "systemcall.c"
     },
     {
@@ -86,7 +86,7 @@
             "-std=c99",
             "transaction.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "transaction.c"
     },
     {
@@ -96,7 +96,7 @@
             "-std=c99",
             "support.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "support.c"
     },
     {
@@ -106,7 +106,7 @@
             "-std=c99",
             "inventory.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "inventory.c"
     },
     {
@@ -116,7 +116,7 @@
             "-std=c99",
             "settings.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "settings.c"
     },
     {
@@ -126,7 +126,7 @@
             "-std=c99",
             "decorate.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "decorate.c"
     },
     {
@@ -136,7 +136,7 @@
             "-std=c99",
             "authenticate.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "authenticate.c"
     },
     {
@@ -146,7 +146,7 @@
             "-std=c99",
             "personnel.c"
         ],
-        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-to-neo4j/example/project",
+        "directory": "/home/xli/NAS/home/bin/ingest-clangd-to-neo4j/clangd-graph-rag/example/project",
         "file": "personnel.c"
     }
 ]
