@@ -128,6 +128,7 @@ class SymbolParser:
         self.symbols: Dict[str, Symbol] = {}
         self.functions: Dict[str, Symbol] = {}
         self.has_container_field: bool = False
+        self.has_call_kind: bool = False
         
         # This field is transient and only used during YAML parsing
         self.unlinked_refs: List[Dict] = []
@@ -169,6 +170,7 @@ class SymbolParser:
             self.symbols = cache_data['symbols']
             self.functions = cache_data['functions']
             self.has_container_field = cache_data['has_container_field']
+            self.has_call_kind = cache_data['has_call_kind']
             logger.info("Successfully loaded symbols from cache.")
         except (pickle.UnpicklingError, EOFError, KeyError) as e:
             logger.error(f"Cache file {cache_path} is corrupted or invalid: {e}. Please delete it and re-run.", exc_info=True)
@@ -180,7 +182,8 @@ class SymbolParser:
             cache_data = {
                 'symbols': self.symbols,
                 'functions': self.functions,
-                'has_container_field': self.has_container_field
+                'has_container_field': self.has_container_field,
+                'has_call_kind': self.has_call_kind
             }
             with open(cache_path, 'wb') as f:
                 pickle.dump(cache_data, f)
@@ -222,8 +225,13 @@ class SymbolParser:
                 if 'Location' in ref_data and 'Kind' in ref_data:
                     reference = Reference.from_dict(ref_data)
                     self.symbols[symbol_id].references.append(reference)
+
                     if not self.has_container_field and reference.container_id:
                         self.has_container_field = True
+                        self.has_call_kind = True
+
+                    elif not self.has_call_kind and reference.kind >= 16:
+                        self.has_call_kind = True
 
         for symbol in self.symbols.values():
             if symbol.is_function():

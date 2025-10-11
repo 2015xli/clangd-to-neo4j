@@ -2,6 +2,9 @@
 import sys
 import argparse
 
+# Get document kinds, and reference kinds.
+# Document kinds: leading marker "--- !"
+# Reference kinds: leading marker "  - Kind:"
 def extract_unique_markers(input_file, marker, count_repeats=False):
     unique_lines = set()
     with open(input_file, "r", encoding="utf-8") as f:

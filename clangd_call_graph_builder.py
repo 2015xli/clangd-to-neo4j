@@ -161,13 +161,25 @@ class ClangdCallGraphExtractorWithoutContainer(BaseClangdCallGraphExtractor):
         del functions_with_bodies
         gc.collect()
 
+        # Determine the correct call kinds to look for based on the clangd version.
+        if self.symbol_parser.has_call_kind:
+            # Kind 20: Call | Reference
+            # Kind 28: Call | Reference | Spelled
+            valid_call_kinds = [20, 28]
+        else:
+            # Kind 4: Reference
+            # Kind 12: Reference | Spelled
+            valid_call_kinds = [4, 12]
+        
+        logger.info(f"Using call kinds for detection: {valid_call_kinds}")
+
         logger.info("Processing call relationships for callees...")
         for callee_symbol in self.symbol_parser.symbols.values():
             if not callee_symbol.references or not callee_symbol.is_function():
                 continue
             
             for reference in callee_symbol.references:
-                if reference.kind not in [4, 12]: # 4: Reference, 12: Spelled Reference
+                if reference.kind not in valid_call_kinds:
                     continue
                 
                 call_location = reference.location
