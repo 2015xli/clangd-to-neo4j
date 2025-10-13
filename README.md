@@ -37,25 +37,32 @@ The `clangd_code_graph_builder.py` orchestrates the following passes:
 ### Pass 0: Parallel Parse Clangd Index (`clangd_index_yaml_parser.py`)
 
 *   **Purpose**: To parse the massive `clangd` index YAML file into an in-memory collection of `Symbol` objects as quickly as possible.
-*   **Key Component**: `ParallelSymbolParser` and `SymbolParser` classes.
-*   **Algorithm**: Uses a multi-process, map-reduce style approach to parse the file in chunks, controlled by `--num-parse-workers`.
+*   **Key Component**: `SymbolParser` class.
+*   **Algorithm**: Uses a multi-process, map-reduce style approach to parse the file in chunks. Implements `.pkl` caching to skip parsing entirely on subsequent runs if the index file is unchanged.
 
 ### Pass 1: Ingest File & Folder Structure (`clangd_symbol_nodes_builder.py`)
 
 *   **Purpose**: Creates `:PROJECT`, `:FOLDER`, and `:FILE` nodes in Neo4j, establishing the physical file system hierarchy.
+*   **Key Component**: `PathProcessor` class.
+*   **Algorithm**: Discovers all unique file and folder paths from symbol locations and uses efficient `UNWIND`-based `MERGE` queries to create the nodes and `:CONTAINS` relationships in bulk.
 
 ### Pass 2: Ingest Symbol Definitions (`clangd_symbol_nodes_builder.py`)
 
 *   **Purpose**: Creates nodes for logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) and their `:DEFINES` relationships to files.
+*   **Key Component**: `SymbolProcessor` class.
+*   **Algorithm**: First, `MERGE`s all `:FUNCTION` and `:DATA_STRUCTURE` nodes in batches. Then, creates `:DEFINES` relationships using a high-performance strategy (e.g., `parallel-create` with `apoc.periodic.iterate`) to avoid database deadlocks.
 
 ### Pass 3: Ingest Call Graph (`clangd_call_graph_builder.py`)
 
 *   **Purpose**: Identifies and ingests function call relationships (`-[:CALLS]->`) into Neo4j.
-*   **Features**: Adaptively chooses the best extraction strategy based on the `clangd` index version.
+*   **Key Component**: `ClangdCallGraphExtractor` classes.
+*   **Algorithm**: Adaptively chooses the best extraction strategy. If the `clangd` index provides a `Container` field for references, it uses this for a direct, high-speed lookup. Otherwise, it falls back to using `tree-sitter`-generated function spans to spatially determine the caller for each call site.
 
 ### Pass 4: Cleanup Orphan Nodes
 
 *   **Purpose**: Removes any nodes that were created but ended up without any relationships, ensuring a clean graph. Skipped with `--keep-orphans`.
+*   **Key Component**: `Neo4jManager`.
+*   **Algorithm**: Executes a Cypher query (`MATCH (n) WHERE size((n)--()) = 0 DELETE n`) to find and delete all nodes with a degree of zero.
 
 ### Pass 5: RAG Data Generation (Optional)
 
