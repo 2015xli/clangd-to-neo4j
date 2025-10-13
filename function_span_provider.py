@@ -38,7 +38,11 @@ class FunctionSpanProvider:
         """
         logger.info("Extracting function spans with tree-sitter...")
         span_extractor = SpanExtractor(self.log_batch_size)
-        function_span_file_dicts = span_extractor.get_function_spans_from_folder(self.project_path, format="dict")
+        function_span_file_dicts = span_extractor.get_function_spans_from_folder(
+            self.project_path,
+            format="dict",
+            cache_path_spec=self.symbol_parser.index_file_path
+        )
         del span_extractor
         gc.collect()
 

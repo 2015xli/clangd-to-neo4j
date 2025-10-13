@@ -7,8 +7,141 @@ from tree_sitter import Language, Parser
 import yaml
 import logging
 import gc
+import pickle
+from typing import Optional
+
+try:
+    import git
+except ImportError:
+    git = None
 
 logger = logging.getLogger(__name__)
+
+def get_git_repo(folder: str) -> Optional[git.Repo]:
+    """
+    Safely initializes a git.Repo object. Returns None if the folder is not a
+    valid Git repository or if gitpython is not installed.
+    """
+    if not git:
+        return None
+    try:
+        repo = git.Repo(folder, search_parent_directories=True)
+        # Ensure the provided folder is actually within the git repo's working tree
+        if not os.path.abspath(folder).startswith(os.path.abspath(repo.working_tree_dir)):
+            return None
+        return repo
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        return None
+
+class SpanCache:
+    """Handles all caching logic for function spans."""
+    def __init__(self, folder: str, cache_path_spec: Optional[str] = None):
+        self.folder = folder
+        self.repo = get_git_repo(folder)
+        self.cache_path = self._get_cache_path(cache_path_spec)
+        self.source_files: Optional[list[str]] = None  # Lazy loaded
+
+    def _get_cache_path(self, cache_path_spec: Optional[str]) -> str:
+        """
+        Constructs the cache file path with flexible input.
+        - If cache_path_spec is None, defaults to a file in the CWD.
+        - If cache_path_spec is a directory, creates the cache file inside it.
+        - If cache_path_spec is a file, creates the cache file alongside it.
+        """
+        # Default case: No path provided, use CWD.
+        if cache_path_spec is None:
+            cache_dir = "."
+            project_name = os.path.basename(os.path.normpath(self.folder))
+            cache_filename = f"span_cache_{project_name}.pkl"
+            return os.path.join(cache_dir, cache_filename)
+
+        # Case 2: A directory is provided.
+        if os.path.isdir(cache_path_spec):
+            cache_dir = cache_path_spec
+            project_name = os.path.basename(os.path.normpath(self.folder))
+            cache_filename = f"span_cache_{project_name}.pkl"
+            os.makedirs(cache_dir, exist_ok=True)
+            return os.path.join(cache_dir, cache_filename)
+        
+        # Case 3: A file path is provided (or a path that looks like a file).
+        base_path, _ = os.path.splitext(cache_path_spec)
+        final_path = base_path + ".function_spans.pkl"
+        
+        # Ensure the directory for the final path exists.
+        final_dir = os.path.dirname(final_path)
+        if final_dir:
+            os.makedirs(final_dir, exist_ok=True)
+            
+        return final_path
+
+    def get_source_files(self) -> list[str]:
+        """Walks the directory to get all .c and .h files, caching the result."""
+        if self.source_files is None:
+            logger.info("Scanning project folder for source files...")
+            files = []
+            for root, _, fs in os.walk(self.folder):
+                for f in fs:
+                    if f.endswith((".c", ".h")):
+                        files.append(os.path.join(root, f))
+            self.source_files = files
+        return self.source_files
+
+    def is_valid(self) -> bool:
+        """Check if the cache is valid using Git or file modification times."""
+        if not os.path.exists(self.cache_path):
+            return False
+
+        try:
+            with open(self.cache_path, "rb") as f:
+                cached_data = pickle.load(f)
+        except (pickle.UnpicklingError, EOFError):
+            logger.warning("Cache file %s is corrupted. Ignoring.", self.cache_path)
+            return False
+
+        if self.repo:
+            if cached_data.get("type") != "git":
+                logger.info("Cache type mismatch (expected git). Regenerating.")
+                return False
+            if cached_data.get("commit_hash") != self.repo.head.object.hexsha:
+                logger.info("Git commit hash changed. Regenerating cache.")
+                return False
+            if self.repo.is_dirty():
+                logger.info("Git working tree is dirty. Forcing cache regeneration.")
+                return False
+            logger.info("Git-based span cache is valid.")
+            return True
+        else:  # Fallback to mtime
+            if cached_data.get("type") != "mtime":
+                logger.info("Cache type mismatch (expected mtime). Regenerating.")
+                return False
+            cache_mtime = os.path.getmtime(self.cache_path)
+            for file_path in self.get_source_files():
+                if os.path.getmtime(file_path) > cache_mtime:
+                    logger.info(f"Cache is stale due to modified file: {file_path}")
+                    return False
+            logger.info("Mtime-based span cache is valid.")
+            return True
+
+    def load(self) -> list:
+        """Load span data from the cache file."""
+        logger.info(f"Loading from cache: {self.cache_path}")
+        with open(self.cache_path, "rb") as f:
+            return pickle.load(f).get("data", [])
+
+    def save(self, data: list):
+        """Save span data and validation metadata to the cache file."""
+        logger.info(f"Saving new span data to cache: {self.cache_path}")
+        cache_obj = {"data": data}
+        if self.repo:
+            cache_obj["type"] = "git"
+            cache_obj["commit_hash"] = self.repo.head.object.hexsha
+        else:
+            cache_obj["type"] = "mtime"
+        
+        with open(self.cache_path, "wb") as f:
+            pickle.dump(cache_obj, f)
+
+
 """
 Extract function spans from C source/header files using tree-sitter.
 Output: YAML string or Python list of function spans, grouped by file.
@@ -207,40 +340,36 @@ class SpanExtractor:
         else:
             return "\n".join(filter(None, all_docs))
 
-    def get_function_spans_from_folder(self, folder, format="dict"):
-        """Extract spans from multiple source files."""
-        file_list = []
-        for root, _, files in os.walk(folder):
-            for f in files:
-                if f.endswith((".c", ".h")):
-                    file_list.append(os.path.join(root, f))
-        
-        all_docs = []
-        logger.info("Processing source files for spans...")
-        processed_files = 0
-        for file_path in file_list:
-            if not os.path.isfile(file_path):
-                continue
-            res = self.get_function_spans(file_path, format=format)
-            if res:
-                if format == "dict":
-                    all_docs.append(res)
-                else:  # yaml string
-                    all_docs.append(res)
-            processed_files += 1
-            if processed_files % self.log_batch_size == 0:
-                print(".", end="", flush=True)
-        print(flush=True)
-        logger.info(f"Finished processing {processed_files} source files for spans.")
+    def get_function_spans_from_folder(self, folder, format="dict", cache_path_spec=None):
+        """Extract spans from a folder, using a cache if possible."""
+        cache = SpanCache(folder, cache_path_spec)
 
-        # Free memory
-        del file_list
+        if cache.is_valid():
+            all_docs = cache.load()
+        else:
+            logger.info("No valid cache found. Parsing source files for spans...")
+            all_docs = []
+            processed_files = 0
+            for file_path in cache.get_source_files():
+                res = self.get_function_spans(file_path, format="dict")
+                if res:
+                    all_docs.append(res)
+                
+                processed_files += 1
+                if processed_files % self.log_batch_size == 0:
+                    print(".", end="", flush=True)
+            
+            print(flush=True)
+            logger.info(f"Finished processing {processed_files} source files for spans.")
+            cache.save(all_docs)
+
         gc.collect()
 
         if format == "dict":
             return all_docs
         else:
-            return "\n".join(filter(None, all_docs))
+            yaml_docs = ["--- !FileFunctionSpans\n" + yaml.safe_dump(doc, sort_keys=False) for doc in all_docs]
+            return "\n".join(filter(None, yaml_docs))
 
 
 if __name__ == "__main__":
@@ -250,7 +379,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "paths",
-        nargs="+",
+        nargs= "+",
         help="One or more source files or folders"
     )
     parser.add_argument(
@@ -279,7 +408,7 @@ if __name__ == "__main__":
         all_results = []
         for p in args.paths:
             if os.path.isdir(p):
-                res = extractor.get_function_spans_from_folder(p, format="dict")
+                res = extractor.get_function_spans_from_folder(p, format="dict", cache_path_spec=args.output)
                 all_results.extend(res)
             else:
                 res = extractor.get_function_spans(p, format="dict")
@@ -290,7 +419,7 @@ if __name__ == "__main__":
         yaml_docs = []
         for p in args.paths:
             if os.path.isdir(p):
-                res = extractor.get_function_spans_from_folder(p, format="yaml")
+                res = extractor.get_function_spans_from_folder(p, format="yaml", cache_path_spec=args.output)
             else:
                 res = extractor.get_function_spans(p, format="yaml")
             if res:
@@ -314,4 +443,3 @@ if __name__ == "__main__":
     # Final cleanup
     del results
     gc.collect()
-
