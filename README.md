@@ -20,7 +20,7 @@ What it does:
 
 ## Architecture Overview
 
-The ingestion process is orchestrated by `clangd_code_graph_builder.py` and proceeds through several passes, leveraging a modular design for efficiency and maintainability.
+The ingestion process is orchestrated by `clangd_graph_rag_builder.py` and proceeds through several passes, leveraging a modular design for efficiency and maintainability.
 
 ### Key Design Principles
 
@@ -32,7 +32,7 @@ The ingestion process is orchestrated by `clangd_code_graph_builder.py` and proc
 
 ## Ingestion Pipeline Passes
 
-The `clangd_code_graph_builder.py` orchestrates the following passes:
+The `clangd_graph_rag_builder.py` orchestrates the following passes:
 
 ### Pass 0: Parallel Parse Clangd Index (`clangd_index_yaml_parser.py`)
 
@@ -75,20 +75,20 @@ The `clangd_code_graph_builder.py` orchestrates the following passes:
     *   **Pass 5.4: Folder "Roll-Up" Summaries**: Aggregates file and sub-folder summaries to create summaries for folders in a bottom-up fashion.
     *   **Pass 5.5: Embedding Generation**: Creates vector embeddings for all generated summaries, enabling semantic search.
 
-## Usage (`clangd_code_graph_builder.py`)
+## Usage (`clangd_graph_rag_builder.py`)
 
 ```bash
 # Example: Basic ingestion for a project
-python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/>
+python3 clangd_graph_rag_builder.py <path_to_index.yaml> <path_to_project/>
 
-# Example: Full pipeline including RAG generation with custom remote workers
-python3 clangd_code_graph_builder.py <path_to_index.yaml> <path_to_project/> \
+# Example: Full pipeline including RAG generation with specified number of remote LLM API clients
+python3 clangd_graph_rag_builder.py <path_to_index.yaml> <path_to_project/> \
     --generate-summary \
-    --llm-api deepseek \
+    --llm-api openai \
     --num-remote-workers 150
 ```
 
-**All Options for `clangd_code_graph_builder.py`:**
+**All Options for `clangd_graph_rag_builder.py`:**
 
 *   `--num-parse-workers <int>`: Number of parallel workers for parsing the YAML index. Defaults to half the CPU cores.
 *   `--defines-generation <strategy>`: Strategy for ingesting `:DEFINES` relationships. Choices: `unwind-create`, `parallel-merge`, `parallel-create`. Default: `parallel-create`.
