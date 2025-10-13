@@ -1,5 +1,14 @@
 # Source code graph RAG based on Clangd index
 
+## Why This Project?
+(Please skip this section if you know what clangd is.)
+
+A Clangd index YAML file is an intermediate data format from [Clang](https://clangd.llvm.org/design/indexing.html) containing detailed syntactical information used by language servers for code navigation and completion. However, while powerful for IDEs, the raw index data doesn't expose the full graph structure of a codebase (especially the call graph) or integrate the semantic understanding that Large Language Models (LLMs) can leverage.
+
+This project fills that gap. It ingests Clangd index data into a Neo4j graph database, reconstructing the complete file, symbol, and call graph hierarchy. It then enriches this structure with AI-generated summaries and vector embeddings, transforming the raw compiler index into a semantically rich knowledge graph. In essence, `clangd-graph-rag` extends Clangd's powerful foundation into an AI-ready code graph, enabling LLMs to reason about a codebase's structure and behavior for advanced tasks like in-depth code analysis, refactoring, and automated reviewing.
+
+## What Clangd-graph-rag Does?
+
 This project provides a pipeline to ingest `clangd` index YAML files into a Neo4j graph database, generate file structure hierarchy and function call graph, then use LLM to generate function/folder summaries and vector embeddings for the code graph, creating a rich knowledge graph RAG of a C/C++ codebase. This graph can then be used for various software engineering tasks like code search, dependency analysis, and refactoring.
 What it does:
    * The project ingests clangd index files into a Neo4j graph database.
