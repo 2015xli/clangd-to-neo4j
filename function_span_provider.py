@@ -5,8 +5,9 @@ from a C/C++ project using tree-sitter.
 """
 
 import logging
-import gc
+import os, gc
 from collections import defaultdict
+from typing import List
 
 from urllib.parse import urlparse, unquote
 
@@ -17,32 +18,58 @@ logger = logging.getLogger(__name__)
 
 class FunctionSpanProvider:
     """
-    Runs tree-sitter to parse an entire project, finds the precise body
+    Runs tree-sitter to parse a project or a list of files, finds the precise body
     locations of all functions, and enriches the Symbol objects from a
     SymbolParser with this information.
     """
-    def __init__(self, project_path: str, symbol_parser: SymbolParser, log_batch_size: int = 1000):
-        self.project_path = project_path
+    def __init__(self, symbol_parser: SymbolParser, paths: List[str], log_batch_size: int = 1000):
+        if not paths:
+            raise ValueError("The 'paths' list cannot be empty.")
+        
+        self.paths = paths
         self.symbol_parser = symbol_parser
         self.log_batch_size = log_batch_size
         self.function_spans_by_file: dict[str, list[FunctionSpan]] = {}
         self._body_spans_by_id: dict[str, dict] = {}
 
         # Automatically run the process on initialization
-        self._extract_spans_from_project()
+        self._extract_spans()
         self._match_function_spans()
 
-    def _extract_spans_from_project(self):
+    def _extract_spans(self):
         """
-        Extracts function spans directly from a project folder.
+        Extracts function spans from a list of files and/or folders.
         """
         logger.info("Extracting function spans with tree-sitter...")
         span_extractor = SpanExtractor(self.log_batch_size)
-        function_span_file_dicts = span_extractor.get_function_spans_from_folder(
-            self.project_path,
-            format="dict",
-            cache_path_spec=self.symbol_parser.index_file_path
-        )
+        
+        # Fast path for single, large project directory
+        if len(self.paths) == 1 and os.path.isdir(self.paths[0]):
+            project_path = self.paths[0]
+            logger.info(f"Processing single project folder (optimized path): {project_path}")
+            function_span_file_dicts = span_extractor.get_function_spans_from_folder(
+                project_path,
+                format="dict",
+                cache_path_spec=self.symbol_parser.index_file_path
+            )
+        else:
+            # Normalization path for mixed files/folders or multiple paths
+            logger.info(f"Processing custom list of {len(self.paths)} paths...")
+            unique_files = set()
+            for path in self.paths:
+                if os.path.isfile(path):
+                    unique_files.add(os.path.abspath(path))
+                elif os.path.isdir(path):
+                    for root, _, files in os.walk(path):
+                        for f in files:
+                            if f.endswith(('.c', '.h')):
+                                unique_files.add(os.path.join(root, f))
+            
+            file_list = sorted(list(unique_files))
+            logger.info(f"Normalized to {len(file_list)} unique source files.")
+            # Note: get_function_spans_from_files does not currently support caching
+            function_span_file_dicts = span_extractor.get_function_spans_from_files(file_list, format="dict")
+
         del span_extractor
         gc.collect()
 

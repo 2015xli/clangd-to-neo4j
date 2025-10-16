@@ -265,7 +265,7 @@ def main():
         from function_span_provider import FunctionSpanProvider
         if os.path.isdir(args.span_path):
             # The provider runs tree-sitter and enriches the symbol_parser object in place.
-            FunctionSpanProvider(args.span_path, symbol_parser, args.log_batch_size)
+            FunctionSpanProvider(symbol_parser=symbol_parser, paths=[args.span_path], log_batch_size=args.log_batch_size)
         else:
             logger.error(f"Project path for span extraction not found or not a directory: {args.span_path}")
             return

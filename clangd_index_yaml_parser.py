@@ -191,6 +191,30 @@ class SymbolParser:
         except Exception as e:
             logger.error(f"Failed to save cache to {cache_path}: {e}", exc_info=True)
 
+    def create_subset(self, symbol_ids_to_keep: set) -> 'SymbolParser':
+        """
+        Creates a new SymbolParser instance containing only the specified symbols
+        and their already-resolved data.
+        """
+        subset_parser = SymbolParser(self.index_file_path)
+        
+        # Copy the relevant symbols
+        for symbol_id in symbol_ids_to_keep:
+            if symbol_id in self.symbols:
+                subset_parser.symbols[symbol_id] = self.symbols[symbol_id]
+        
+        # Re-build the helper 'functions' dictionary for the new subset
+        for symbol in subset_parser.symbols.values():
+            if symbol.is_function():
+                subset_parser.functions[symbol.id] = symbol
+        
+        # Copy over the metadata flags
+        subset_parser.has_container_field = self.has_container_field
+        subset_parser.has_call_kind = self.has_call_kind
+        
+        logger.info(f"Created mini-index with {len(subset_parser.symbols)} symbols ({len(subset_parser.functions)} functions).")
+        return subset_parser
+
     def _parse_yaml_file(self):
         """Phase 1: Reads and sanitizes a YAML file, then loads the data."""
         logger.info(f"Reading and sanitizing index file: {self.index_file_path}")

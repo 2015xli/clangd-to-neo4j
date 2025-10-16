@@ -92,6 +92,56 @@ class Neo4jManager:
             result = session.run(query)
             return result.consume().counters.nodes_deleted
 
+    def purge_files(self, file_paths: List[str]) -> Tuple[int, int]:
+        """Deletes FILE nodes for the given paths and prunes empty FOLDERs."""
+        deleted_files = 0
+        deleted_folders = 0
+        if not file_paths:
+            return 0, 0
+
+        with self.driver.session() as session:
+            # Delete the specified FILE nodes
+            del_files_query = "UNWIND $paths AS path MATCH (f:FILE {path: path}) DETACH DELETE f"
+            result = session.run(del_files_query, paths=file_paths)
+            deleted_files = result.consume().counters.nodes_deleted
+            logger.info(f"Purged {deleted_files} FILE nodes.")
+
+            # Iteratively delete empty folders
+            while True:
+                del_folders_query = """
+                MATCH (d:FOLDER)
+                WHERE NOT EXISTS((d)<-[:CONTAINS]-()) AND NOT (d)-[:CONTAINS]->()
+                WITH d LIMIT 1000
+                DETACH DELETE d
+                RETURN count(d)
+                """
+                result = session.run(del_folders_query)
+                count = result.single()[0]
+                if count == 0:
+                    break
+                deleted_folders += count
+                logger.info(f"Pruned {deleted_folders} empty FOLDER nodes so far...")
+        
+        logger.info(f"Total empty FOLDER nodes pruned: {deleted_folders}")
+        return deleted_files, deleted_folders
+
+    def purge_symbols_defined_in_files(self, file_paths: List[str]) -> int:
+        """Finds and deletes all symbols defined in the given file paths."""
+        if not file_paths:
+            return 0
+        
+        query = """
+        UNWIND $paths AS path
+        MATCH (file:FILE {path: path})<-[:DEFINES]-(s)
+        WHERE s:FUNCTION OR s:DATA_STRUCTURE
+        DETACH DELETE s
+        """
+        with self.driver.session() as session:
+            result = session.run(query, paths=file_paths)
+            deleted_symbols = result.consume().counters.nodes_deleted
+            logger.info(f"Purged {deleted_symbols} symbols defined in {len(file_paths)} files.")
+            return deleted_symbols
+
     def create_vector_indices(self) -> None:
         """Creates vector indices for summary embeddings."""
         index_queries = [

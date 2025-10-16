@@ -66,6 +66,169 @@ class RagGenerator:
         self.summarize_files_and_folders()
         self.generate_embeddings()
 
+    def summarize_targeted_update(self, seed_symbol_ids: set):
+        """Runs a targeted summarization pass starting from a set of seed symbols."""
+        if not seed_symbol_ids:
+            logging.info("No seed symbols provided for targeted update. Skipping.")
+            return
+
+        logging.info(f"\n--- Starting Targeted RAG Update for {len(seed_symbol_ids)} seed symbols ---")
+
+        # 1. Get the full scope of functions to update (seeds + 1-hop neighbors)
+        neighbor_ids = self._get_neighbor_ids(seed_symbol_ids)
+        all_function_ids_to_process = seed_symbol_ids.union(neighbor_ids)
+        logging.info(f"Expanded scope to {len(all_function_ids_to_process)} total functions (seeds + neighbors).")
+
+        # 2. Run targeted summarization on these functions
+        updated_function_ids = self._summarize_targeted_functions(all_function_ids_to_process)
+        if not updated_function_ids:
+            logging.info("No function summaries were updated. Targeted update complete.")
+            return
+        
+        logging.info(f"Completed function summaries. {len(updated_function_ids)} functions were updated.")
+
+        # 3. Find the files containing these updated functions and roll up summaries
+        starting_file_paths = self._find_files_for_updated_symbols(updated_function_ids)
+        if starting_file_paths:
+            self._rollup_summaries_from_files(starting_file_paths)
+
+        # 4. Generate embeddings for all nodes that have a new summary
+        self.generate_embeddings() # This method already finds all nodes needing an embedding
+        logging.info("--- Finished Targeted RAG Update ---")
+
+    def _get_neighbor_ids(self, seed_symbol_ids: set) -> set:
+        """Finds the 1-hop callers and callees of the seed symbols."""
+        if not seed_symbol_ids:
+            return set()
+        
+        query = """
+        UNWIND $seed_ids AS seedId
+        MATCH (n) WHERE n.id = seedId
+        // Match direct callers and callees
+        OPTIONAL MATCH (neighbor:FUNCTION)-[:CALLS*1]-(n)
+        WITH collect(DISTINCT n.id) + collect(DISTINCT neighbor.id) AS allIds
+        UNWIND allIds as id
+        RETURN collect(DISTINCT id) as ids
+        """
+        result = self.neo4j_mgr.execute_read_query(query, {"seed_ids": list(seed_symbol_ids)})
+        if result and result[0] and result[0]['ids']:
+            return set(result[0]['ids'])
+        return seed_symbol_ids # Return original set if query fails
+
+    def _summarize_targeted_functions(self, target_ids: set) -> set:
+        """Runs Pass 1 and 2 summarization for a specific set of function IDs."""
+        if not target_ids:
+            return set()
+
+        # Pass 1: Code-only summary
+        # We need to get the same info as _get_functions_for_code_summary but for our targets
+        query1 = """
+        MATCH (n:FUNCTION)
+        WHERE n.id IN $target_ids AND n.codeSummary IS NULL
+        RETURN n.id AS id, n.path AS path, n.location as location
+        """
+        pass1_funcs = self.neo4j_mgr.execute_read_query(query1, {"target_ids": list(target_ids)})
+        
+        if pass1_funcs:
+            max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+            self._parallel_process(
+                items=pass1_funcs,
+                process_func=self._process_one_function_for_code_summary,
+                max_workers=max_workers,
+                desc="Targeted Update: Code Summaries"
+            )
+
+        # Pass 2: Context-aware summary
+        # We use the one-step smart summary prompt here
+        query2 = """
+        MATCH (n:FUNCTION) WHERE n.id IN $target_ids
+        // Return old summary even if it exists, for the smart prompt
+        RETURN n.id AS id, n.summary AS old_summary
+        """
+        pass2_funcs = self.neo4j_mgr.execute_read_query(query2, {"target_ids": list(target_ids)})
+        updated_ids = set()
+
+        def process_smart_summary(func_data):
+            func_id = func_data['id']
+            old_summary = func_data.get('old_summary', '')
+            body_span = self.span_provider.get_body_span(func_id)
+            if not body_span: return
+
+            # For now, we don't have old code, so we can't use the full smart prompt.
+            # We will use the simplified context prompt for now.
+            # This can be enhanced later if we store old code versions.
+            new_summary = self._process_one_function_for_contextual_summary(func_id)
+            if new_summary and new_summary != old_summary:
+                updated_ids.add(func_id)
+
+        if pass2_funcs:
+            max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+            self._parallel_process(
+                items=pass2_funcs,
+                process_func=process_smart_summary,
+                max_workers=max_workers,
+                desc="Targeted Update: Context Summaries"
+            )
+
+        return updated_ids
+
+    def _find_files_for_updated_symbols(self, symbol_ids: set) -> set:
+        """Finds the file paths that define a given set of symbols."""
+        if not symbol_ids:
+            return set()
+        query = """
+        UNWIND $symbol_ids as symbolId
+        MATCH (f:FILE)-[:DEFINES]->(s) WHERE s.id = symbolId
+        RETURN f.path AS path
+        """
+        results = self.neo4j_mgr.execute_read_query(query, {"symbol_ids": list(symbol_ids)})
+        return {r['path'] for r in results}
+
+    def _rollup_summaries_from_files(self, starting_file_paths: set):
+        """For a given set of files, re-summarizes them and all their parent folders."""
+        if not starting_file_paths:
+            return
+        
+        logging.info(f"Rolling up summaries starting from {len(starting_file_paths)} files.")
+        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
+
+        # Re-summarize the files themselves
+        self._parallel_process(
+            items=list(starting_file_paths),
+            process_func=self._summarize_one_file,
+            max_workers=max_workers,
+            desc="Targeted Update: File Roll-up"
+        )
+
+        # Get all parent folders of these files
+        query = """
+        UNWIND $paths as filePath
+        MATCH (f:FILE {path: filePath})<-[:CONTAINS*]-(folder:FOLDER)
+        RETURN DISTINCT folder.path as path, folder.name as name
+        """
+        parent_folders = self.neo4j_mgr.execute_read_query(query, {"paths": list(starting_file_paths)})
+        if not parent_folders: return
+
+        # Group folders by depth to process bottom-up
+        folders_by_depth = {}
+        for folder in parent_folders:
+            depth = folder['path'].count(os.sep)
+            if depth not in folders_by_depth:
+                folders_by_depth[depth] = []
+            folders_by_depth[depth].append(folder)
+
+        # Process level by level, from deepest to shallowest
+        for depth in sorted(folders_by_depth.keys(), reverse=True):
+            self._parallel_process(
+                items=folders_by_depth[depth],
+                process_func=lambda f: self._summarize_one_folder(f['path'], f['name']),
+                max_workers=max_workers,
+                desc=f"Targeted Update: Folder Roll-up (Depth {depth})"
+            )
+        
+        # Finally, re-summarize the project node
+        self._summarize_project()
+
     # --- Pass 1 Methods ---
     def summarize_functions_individually(self):
         """PASS 1: Generates a code-only summary for each function."""

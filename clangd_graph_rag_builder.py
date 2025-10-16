@@ -124,7 +124,7 @@ def main():
                 logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
                 from function_span_provider import FunctionSpanProvider
                 # If created here, store the instance in our variable for reuse
-                span_provider = FunctionSpanProvider(args.project_path, symbol_parser, args.log_batch_size)
+                span_provider = FunctionSpanProvider(symbol_parser=symbol_parser, paths=[args.project_path], log_batch_size=args.log_batch_size)
                 extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
 
             call_relations = extractor.extract_call_relationships()
