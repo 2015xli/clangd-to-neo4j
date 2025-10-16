@@ -1,14 +1,14 @@
-# Summary: `code_graph_rag_updater.py` - Incremental Code Graph RAG Updater
+# Summary: `clangd_graph_rag_updater.py` - Incremental Code Graph RAG Updater
 
-This document summarizes the design and functionality of `code_graph_rag_updater.py`, a script responsible for incrementally updating the Neo4j code graph with RAG (Retrieval Augmented Generation) data based on changes in a Git repository. It leverages a "Mini-Index Approach" to efficiently synchronize the graph without requiring a full rebuild.
+This document summarizes the design and functionality of `clangd_graph_rag_updater.py`, a script responsible for incrementally updating the Neo4j code graph with RAG (Retrieval Augmented Generation) data based on changes in a Git repository. It leverages a "Mini-Index Approach" to efficiently synchronize the graph without requiring a full rebuild.
 
 ## 1. Purpose
 
-The primary purpose of `code_graph_rag_updater.py` is to provide an efficient mechanism for keeping the Neo4j code graph, including its AI-generated summaries and vector embeddings, synchronized with an evolving C/C++ codebase. This avoids the computationally expensive process of re-ingesting the entire codebase for minor changes.
+The primary purpose of `clangd_graph_rag_updater.py` is to provide an efficient mechanism for keeping the Neo4j code graph, including its AI-generated summaries and vector embeddings, synchronized with an evolving C/C++ codebase. This avoids the computationally expensive process of re-ingesting the entire codebase for minor changes.
 
 ## 2. Architecture Overview
 
-The `code_graph_rag_updater.py` script orchestrates a multi-phase incremental update process. It reuses existing ingestion pipeline components where possible, focusing on processing only the changed portions of the codebase.
+The `clangd_graph_rag_updater.py` script orchestrates a multi-phase incremental update process. It reuses existing ingestion pipeline components where possible, focusing on processing only the changed portions of the codebase.
 
 ## 3. Key Design Principles
 
