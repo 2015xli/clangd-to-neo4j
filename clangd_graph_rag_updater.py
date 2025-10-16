@@ -156,19 +156,20 @@ class GraphUpdater:
         logger.info("Finding 1-hop neighbors (callers and callees)...")
         final_symbol_ids = set(seed_symbol_ids)
 
-        # Find Incoming Callers
-        for symbol_id in seed_symbol_ids:
-            if symbol_id in full_symbol_parser.refs:
-                for ref in full_symbol_parser.refs[symbol_id].references:
+        # Find Incoming Callers (functions that call the seed symbols)
+        for seed_id in seed_symbol_ids:
+            if seed_id in full_symbol_parser.symbols:
+                callee_symbol = full_symbol_parser.symbols[seed_id]
+                for ref in callee_symbol.references:
                     if ref.container_id and ref.container_id != '0000000000000000':
                         final_symbol_ids.add(ref.container_id)
 
-        # Find Outgoing Callees
-        for callee_id, refs_doc in full_symbol_parser.refs.items():
-            for ref in refs_doc.references:
+        # Find Outgoing Callees (functions called by the seed symbols)
+        for callee_symbol in full_symbol_parser.symbols.values():
+            for ref in callee_symbol.references:
                 if ref.container_id in seed_symbol_ids:
-                    final_symbol_ids.add(callee_id)
-                    break # Move to next refs_doc once a link is found
+                    final_symbol_ids.add(callee_symbol.id)
+                    break  # Optimization: move to the next symbol once one link is found
         
         logger.info(f"Total symbols in mini-index (seeds + neighbors): {len(final_symbol_ids)}")
 

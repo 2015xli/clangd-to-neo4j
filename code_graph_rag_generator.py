@@ -44,56 +44,69 @@ class RagGenerator:
         self.num_local_workers = num_local_workers
         self.num_remote_workers = num_remote_workers
 
-    def _parallel_process(self, items: Iterable, process_func: Callable, max_workers: int, desc: str):
-        """Processes items in parallel using a thread pool and shows a progress bar."""
+    def _parallel_process(self, items: Iterable, process_func: Callable, max_workers: int, desc: str) -> list:
+        """
+        Processes items in parallel using a thread pool, shows a progress bar,
+        and returns a list of the non-None results from the process_func.
+        """
         if not items:
-            return
+            return []
 
+        results = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_func, item): item for item in items}
             
             for future in tqdm(as_completed(futures), total=len(items), desc=desc):
                 try:
-                    future.result()
+                    result = future.result()
+                    if result:
+                        results.append(result)
                 except Exception as e:
                     item = futures[future]
                     logging.error(f"Error processing item {item}: {e}", exc_info=True)
+        return results
 
     def summarize_code_graph(self):
-        """Main orchestrator method to run all summarization passes."""
+        """Main orchestrator method to run all summarization passes for a full build."""
         self.summarize_functions_individually()
         self.summarize_functions_with_context()
         self.summarize_files_and_folders()
         self.generate_embeddings()
 
     def summarize_targeted_update(self, seed_symbol_ids: set):
-        """Runs a targeted summarization pass starting from a set of seed symbols."""
+        """Runs a targeted, multi-pass summarization starting from a set of seed symbols."""
         if not seed_symbol_ids:
             logging.info("No seed symbols provided for targeted update. Skipping.")
             return
 
         logging.info(f"\n--- Starting Targeted RAG Update for {len(seed_symbol_ids)} seed symbols ---")
 
-        # 1. Get the full scope of functions to update (seeds + 1-hop neighbors)
+        # Pass 1: Code-only summary for the functions directly changed.
+        logging.info("Targeted Update - Pass 1: Summarizing changed functions individually...")
+        updated_code_summary_ids = self._summarize_functions_individually_with_ids(list(seed_symbol_ids))
+        logging.info(f"{len(updated_code_summary_ids)} functions received a new code summary.")
+
+        # Pass 2: Context-aware summary for changed functions and their neighbors.
+        logging.info("Targeted Update - Pass 2: Summarizing functions with context...")
         neighbor_ids = self._get_neighbor_ids(seed_symbol_ids)
         all_function_ids_to_process = seed_symbol_ids.union(neighbor_ids)
-        logging.info(f"Expanded scope to {len(all_function_ids_to_process)} total functions (seeds + neighbors).")
-
-        # 2. Run targeted summarization on these functions
-        updated_function_ids = self._summarize_targeted_functions(all_function_ids_to_process)
-        if not updated_function_ids:
-            logging.info("No function summaries were updated. Targeted update complete.")
+        logging.info(f"Expanded scope for Pass 2 to {len(all_function_ids_to_process)} total functions (seeds + neighbors).")
+        
+        updated_final_summary_ids = self._summarize_functions_with_context_with_ids(list(all_function_ids_to_process))
+        
+        if not updated_final_summary_ids:
+            logging.info("No function final summaries were updated. Targeted update complete.")
             return
         
-        logging.info(f"Completed function summaries. {len(updated_function_ids)} functions were updated.")
+        logging.info(f"Completed function summaries. {len(updated_final_summary_ids)} functions received a new final summary in Pass 2.")
 
-        # 3. Find the files containing these updated functions and roll up summaries
-        starting_file_paths = self._find_files_for_updated_symbols(updated_function_ids)
+        # Passes 3 & 4: Find the files containing these updated functions and roll up summaries.
+        starting_file_paths = self._find_files_for_updated_symbols(updated_final_summary_ids)
         if starting_file_paths:
             self._rollup_summaries_from_files(starting_file_paths)
 
-        # 4. Generate embeddings for all nodes that have a new summary
-        self.generate_embeddings() # This method already finds all nodes needing an embedding
+        # Pass 5: Generate embeddings for all nodes that have a new summary.
+        self.generate_embeddings()
         logging.info("--- Finished Targeted RAG Update ---")
 
     def _get_neighbor_ids(self, seed_symbol_ids: set) -> set:
@@ -113,64 +126,7 @@ class RagGenerator:
         result = self.neo4j_mgr.execute_read_query(query, {"seed_ids": list(seed_symbol_ids)})
         if result and result[0] and result[0]['ids']:
             return set(result[0]['ids'])
-        return seed_symbol_ids # Return original set if query fails
-
-    def _summarize_targeted_functions(self, target_ids: set) -> set:
-        """Runs Pass 1 and 2 summarization for a specific set of function IDs."""
-        if not target_ids:
-            return set()
-
-        # Pass 1: Code-only summary
-        # We need to get the same info as _get_functions_for_code_summary but for our targets
-        query1 = """
-        MATCH (n:FUNCTION)
-        WHERE n.id IN $target_ids AND n.codeSummary IS NULL
-        RETURN n.id AS id, n.path AS path, n.location as location
-        """
-        pass1_funcs = self.neo4j_mgr.execute_read_query(query1, {"target_ids": list(target_ids)})
-        
-        if pass1_funcs:
-            max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
-            self._parallel_process(
-                items=pass1_funcs,
-                process_func=self._process_one_function_for_code_summary,
-                max_workers=max_workers,
-                desc="Targeted Update: Code Summaries"
-            )
-
-        # Pass 2: Context-aware summary
-        # We use the one-step smart summary prompt here
-        query2 = """
-        MATCH (n:FUNCTION) WHERE n.id IN $target_ids
-        // Return old summary even if it exists, for the smart prompt
-        RETURN n.id AS id, n.summary AS old_summary
-        """
-        pass2_funcs = self.neo4j_mgr.execute_read_query(query2, {"target_ids": list(target_ids)})
-        updated_ids = set()
-
-        def process_smart_summary(func_data):
-            func_id = func_data['id']
-            old_summary = func_data.get('old_summary', '')
-            body_span = self.span_provider.get_body_span(func_id)
-            if not body_span: return
-
-            # For now, we don't have old code, so we can't use the full smart prompt.
-            # We will use the simplified context prompt for now.
-            # This can be enhanced later if we store old code versions.
-            new_summary = self._process_one_function_for_contextual_summary(func_id)
-            if new_summary and new_summary != old_summary:
-                updated_ids.add(func_id)
-
-        if pass2_funcs:
-            max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
-            self._parallel_process(
-                items=pass2_funcs,
-                process_func=process_smart_summary,
-                max_workers=max_workers,
-                desc="Targeted Update: Context Summaries"
-            )
-
-        return updated_ids
+        return seed_symbol_ids
 
     def _find_files_for_updated_symbols(self, symbol_ids: set) -> set:
         """Finds the file paths that define a given set of symbols."""
@@ -192,7 +148,6 @@ class RagGenerator:
         logging.info(f"Rolling up summaries starting from {len(starting_file_paths)} files.")
         max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
 
-        # Re-summarize the files themselves
         self._parallel_process(
             items=list(starting_file_paths),
             process_func=self._summarize_one_file,
@@ -200,7 +155,6 @@ class RagGenerator:
             desc="Targeted Update: File Roll-up"
         )
 
-        # Get all parent folders of these files
         query = """
         UNWIND $paths as filePath
         MATCH (f:FILE {path: filePath})<-[:CONTAINS*]-(folder:FOLDER)
@@ -209,7 +163,6 @@ class RagGenerator:
         parent_folders = self.neo4j_mgr.execute_read_query(query, {"paths": list(starting_file_paths)})
         if not parent_folders: return
 
-        # Group folders by depth to process bottom-up
         folders_by_depth = {}
         for folder in parent_folders:
             depth = folder['path'].count(os.sep)
@@ -217,7 +170,6 @@ class RagGenerator:
                 folders_by_depth[depth] = []
             folders_by_depth[depth].append(folder)
 
-        # Process level by level, from deepest to shallowest
         for depth in sorted(folders_by_depth.keys(), reverse=True):
             self._parallel_process(
                 items=folders_by_depth[depth],
@@ -226,37 +178,45 @@ class RagGenerator:
                 desc=f"Targeted Update: Folder Roll-up (Depth {depth})"
             )
         
-        # Finally, re-summarize the project node
         self._summarize_project()
 
     # --- Pass 1 Methods ---
     def summarize_functions_individually(self):
-        """PASS 1: Generates a code-only summary for each function."""
+        """PASS 1: Generates a code-only summary for all functions in the graph."""
         logging.info("\n--- Starting Pass 1: Summarizing Functions Individually ---")
         
         matched_ids = self.span_provider.get_matched_function_ids()
         if not matched_ids:
             logging.warning("Span provider found no functions to process. Exiting Pass 1.")
             return
+        
+        self._summarize_functions_individually_with_ids(matched_ids)
+        logging.info("--- Finished Pass 1 ---")
 
-        functions_to_process = self._get_functions_for_code_summary(matched_ids)
-        if not functions_to_process:
-            logging.info("No functions require summarization in Pass 1.")
-            return
+    def _summarize_functions_individually_with_ids(self, function_ids: list[str]) -> set:
+        """
+        Core logic for Pass 1, operating on a specific list of function IDs.
+        Returns the set of function IDs that were actually updated.
+        """
+        if not function_ids:
+            return set()
             
-        logging.info(f"Found {len(functions_to_process)} functions with spans that need summaries.")
-
+        functions_to_process = self._get_functions_for_code_summary(function_ids)
+        if not functions_to_process:
+            logging.info("No functions from the provided list require a code summary.")
+            return set()
+            
+        logging.info(f"Found {len(functions_to_process)} functions that need code summaries.")
         max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
         logging.info(f"Using {max_workers} parallel workers for Pass 1.")
 
-        self._parallel_process(
+        updated_ids = self._parallel_process(
             items=functions_to_process,
             process_func=self._process_one_function_for_code_summary,
             max_workers=max_workers,
             desc="Pass 1: Code Summaries"
         )
-
-        logging.info("--- Finished Pass 1 ---")
+        return set(updated_ids)
 
     def _get_functions_for_code_summary(self, function_ids: list[str]) -> list[dict]:
         query = """
@@ -266,91 +226,100 @@ class RagGenerator:
         """
         return self.neo4j_mgr.execute_read_query(query, {"function_ids": function_ids})
 
-    def _process_one_function_for_code_summary(self, func: dict):
+    def _process_one_function_for_code_summary(self, func: dict) -> str | None:
+        """
+        Processes a single function for a code-only summary.
+        Returns the function ID if a summary was successfully generated, otherwise None.
+        """
         func_id = func['id']
-        # TQDM provides progress, so individual logging can be reduced.
-        # logging.info(f"Processing function for code summary: {func_id}")
         body_span = self.span_provider.get_body_span(func_id)
-        if not body_span: return
+        if not body_span: return None
         source_code = self._get_source_code_from_span(body_span)
-        if not source_code: return
-        logging.info(f"Source code for {func}:\n {source_code}")
-
+        if not source_code: return None
+        
         prompt = f"Summarize the purpose of this C function based on its code:\n\n```c\n{source_code}```"
         summary = self.llm_client.generate_summary(prompt)
-        if not summary: return
+        if not summary: return None
 
         update_query = "MATCH (n:FUNCTION {id: $id}) SET n.codeSummary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": summary})
-        # logging.info(f"-> Stored codeSummary for function {func_id}")
+        return func_id
 
     # --- Pass 2 Methods ---
     def summarize_functions_with_context(self):
-        """PASS 2: Generates a final, context-aware summary for each function."""
+        """PASS 2: Generates a final, context-aware summary for all functions in the graph."""
         logging.info("\n--- Starting Pass 2: Summarizing Functions With Context ---")
         
         functions_to_process = self._get_functions_for_contextual_summary()
         if not functions_to_process:
             logging.info("No functions require summarization in Pass 2.")
             return
+        
+        func_ids = [func['id'] for func in functions_to_process]
+        self._summarize_functions_with_context_with_ids(func_ids)
+        logging.info("--- Finished Pass 2 ---")
 
-        logging.info(f"Found {len(functions_to_process)} functions that need a final summary.")
+    def _summarize_functions_with_context_with_ids(self, function_ids: list[str]) -> set:
+        """
+        Core logic for Pass 2, operating on a specific list of function IDs.
+        Returns the set of function IDs that were actually updated.
+        """
+        if not function_ids:
+            return set()
 
+        logging.info(f"Found {len(function_ids)} functions that need a final summary.")
         max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
         logging.info(f"Using {max_workers} parallel workers for Pass 2.")
 
-        # Extract just the function IDs to pass to the parallel processor
-        func_ids = [func['id'] for func in functions_to_process]
-
-        self._parallel_process(
-            items=func_ids,
+        updated_ids = self._parallel_process(
+            items=function_ids,
             process_func=self._process_one_function_for_contextual_summary,
             max_workers=max_workers,
             desc="Pass 2: Context Summaries"
         )
-        
-        logging.info("--- Finished Pass 2 ---")
+        return set(updated_ids)
 
     def _get_functions_for_contextual_summary(self) -> list[dict]:
         query = "MATCH (n:FUNCTION) WHERE n.codeSummary IS NOT NULL AND n.summary IS NULL RETURN n.id AS id"
         return self.neo4j_mgr.execute_read_query(query)
 
-    def _process_one_function_for_contextual_summary(self, func_id: str):
-        # logging.info(f"Processing function for contextual summary: {func_id}")
+    def _process_one_function_for_contextual_summary(self, func_id: str) -> str | None:
+        """
+        Processes a single function for a contextual summary.
+        Returns the function ID if the final summary was generated or changed, otherwise None.
+        """
         context_query = """
         MATCH (n:FUNCTION {id: $id})
         OPTIONAL MATCH (caller:FUNCTION)-[:CALLS]->(n)
         OPTIONAL MATCH (n)-[:CALLS]->(callee:FUNCTION)
         RETURN n.codeSummary AS codeSummary,
+               n.summary AS old_summary,
                collect(DISTINCT caller.codeSummary) AS callerSummaries,
                collect(DISTINCT callee.codeSummary) AS calleeSummaries
         """
         results = self.neo4j_mgr.execute_read_query(context_query, {"id": func_id})
-        if not results: return
+        if not results: return None
 
         context = results[0]
+        code_summary = context.get('codeSummary')
+        old_summary = context.get('old_summary')
+        
+        if not code_summary: return None
+
         prompt = self._build_contextual_prompt(
-            context.get('codeSummary', ''),
+            code_summary,
             context.get('callerSummaries', []),
             context.get('calleeSummaries', [])
         )
         final_summary = self.llm_client.generate_summary(prompt)
-        if not final_summary: return
+        if not final_summary: return None
 
-        update_query = "MATCH (n:FUNCTION {id: $id}) SET n.summary = $summary"
-        self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": final_summary})
-        # logging.info(f"-> Stored final summary for function {func_id}")
-
-    def _build_contextual_prompt(self, code_summary, caller_summaries, callee_summaries) -> str:
-        caller_text = ", ".join([s for s in caller_summaries if s]) or "none"
-        callee_text = ", ".join([s for s in callee_summaries if s]) or "none"
-        return (
-            f"A C function is described as: '{code_summary}'.\n"
-            f"It is called by functions with these responsibilities: [{caller_text}].\n"
-            f"It calls other functions to do the following: [{callee_text}].\n\n"
-            f"Based on this context, what is the high-level purpose of this function in the overall system? "
-            f"Describe it in one concise sentence."
-        )
+        if final_summary != old_summary:
+            update_query = "MATCH (n:FUNCTION {id: $id}) SET n.summary = $summary"
+            self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": final_summary})
+            return func_id
+        
+        return None
 
     # --- Pass 3 & 4 Methods ---
     def summarize_files_and_folders(self):
@@ -467,7 +436,7 @@ class RagGenerator:
         summary = self.llm_client.generate_summary(prompt)
         if not summary: return
 
-        update_query = "MATCH (p:PROJECT) SET p.summary = $summary"
+        update_query = "MATCH (p:PROJECT) SET p.summary = $summary REMOVE p.summaryEmbedding"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"summary": summary})
         logging.info("-> Stored summary for PROJECT node.")
 
