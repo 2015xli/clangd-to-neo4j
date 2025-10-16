@@ -2,42 +2,34 @@
 
 ## 1. Role in the Pipeline
 
-This script acts as a **library module** that centralizes the functionality of extracting precise function body locations (spans) from C/C++ source files. It uses `tree-sitter` to parse the code and then maps these spans to the `Symbol` objects obtained from the `clangd` index parser.
+This script acts as a crucial library module that bridges the information gap between the `clangd` index and the physical layout of the source code. Its primary responsibility is to use `tree-sitter` to find the precise start and end coordinates of every function body and then map this information onto the corresponding `Symbol` objects parsed from the `clangd` index.
 
-This module is crucial for scenarios where the `clangd` index (older versions) does not provide `Container` information for references, making it necessary to determine the calling function based on spatial location.
+This enrichment is essential for two key downstream tasks:
+1.  **Legacy Call Graph Building**: When a `clangd` index lacks the `Container` field, the call graph builder needs to know the exact boundaries of every function to determine which function contains a given call site.
+2.  **RAG Summary Generation**: To provide an LLM with the source code of a function for summarization, the generator needs the exact coordinates of that function's body.
 
 ## 2. Core Logic
 
-The `FunctionSpanProvider` class orchestrates the process of span extraction and matching.
+The `FunctionSpanProvider` class orchestrates the entire process, which is triggered upon its initialization.
 
-### Architecture
+### Step 1: Span Extraction (`_extract_spans`)
 
-1.  **Initialization**: Upon instantiation, it automatically triggers the span extraction and matching process.
-2.  **`tree-sitter` Integration**: It leverages the `SpanExtractor` (from `tree_sitter_span_extractor.py`) to perform the actual parsing of source files and identification of function definition spans.
-3.  **Symbol Enrichment**: It takes a `SymbolParser` instance and enriches its `Symbol` objects (specifically functions) with `body_location` information, which includes the file path and start/end line/column of the function's body.
+*   **Mechanism**: This step uses the `SpanExtractor` class (from `tree_sitter_span_extractor.py`) to perform the low-level code parsing. It recursively scans the provided project directory for all C/C++ source files (`.c`, `.h`).
+*   **Output**: The result of the extraction is a collection of `FunctionSpan` objects, grouped by file URI. Each `FunctionSpan` contains the function's name and its location information as identified by `tree-sitter`.
 
-### Algorithm Details
+### Step 2: Symbol Matching (`_match_function_spans`)
 
-#### `_extract_spans_from_project()`
+This is the most critical step, where the abstract symbols from `clangd` are linked to the concrete spans from `tree-sitter`.
 
--   Initializes a `SpanExtractor` and calls its `get_function_spans_from_folder` method to recursively scan the project directory for `.c` and `.h` files.
--   Parses each file using `tree-sitter` to identify `function_definition` nodes and extract their name and body locations.
--   Stores these extracted spans, grouped by `FileURI`, in an internal dictionary (`function_spans_by_file`).
--   Includes memory optimization by explicitly deleting the `SpanExtractor` and invoking garbage collection after span extraction.
+*   **The Challenge**: A reliable method is needed to prove that a `Symbol` object from the `clangd` index and a `FunctionSpan` from `tree-sitter` refer to the exact same function in the code.
+*   **The Matching Algorithm**: The script solves this by creating a temporary lookup dictionary. The key to this dictionary is a composite key designed to be a unique signature for a function's definition:
+    
+    `(function_name, file_uri, name_start_line, name_start_column)`
+    
+*   **Subtlety**: The script builds this composite key for every single function span found by `tree-sitter`. It then iterates through all the function `Symbol` objects from the `clangd` parser and constructs the *exact same key format* for each symbol using its definition location. 
+*   When a key from a `clangd` symbol matches a key in the `tree-sitter` lookup dictionary, a successful link is made.
 
-#### `_match_function_spans()`
+### Step 3: Symbol Enrichment
 
--   This method links the `tree-sitter` generated spans to the `clangd` `Symbol` objects.
--   It creates a lookup dictionary (`spans_lookup`) using a composite key of `(function_name, file_uri, start_line, start_column)` from the `tree-sitter` spans.
--   It then iterates through all function `Symbol` objects provided by the `SymbolParser`.
--   For each `Symbol` that has a definition location, it constructs a matching key and attempts to find a corresponding span in the `spans_lookup`.
--   If a match is found, the `body_location` property of the `Symbol` object is updated with the precise body span.
--   Additionally, it builds an internal map (`_body_spans_by_id`) for quick retrieval of body spans by `function_id`.
--   Performs cleanup of intermediate data structures and garbage collection to manage memory.
-
-## 3. Key Methods & Output
-
--   **`get_body_span(function_id: str)`**: A public method to retrieve the body span (file path, start/end lines/columns) for a given function ID.
--   **`get_matched_function_ids()`**: Returns a list of all function IDs for which a body span was successfully matched.
-
-The module ensures that `Symbol` objects are enriched with accurate body location data, which is then used by other parts of the pipeline (e.g., `clangd_call_graph_builder.py` for legacy `clangd` index formats, and `code_graph_rag_generator.py` for extracting source code).
+*   **Mechanism**: Once a match is found, the `FunctionSpanProvider` takes the `body_location` (the start and end coordinates of the function's body) from the `tree-sitter` `FunctionSpan` and attaches it as a new attribute directly onto the in-memory `clangd` `Symbol` object.
+*   **Output**: The process does not return a new object. Instead, it modifies the `SymbolParser` instance it was given in-place. After the provider has run, the `Symbol` objects within the parser are now enriched with the precise location of their code, ready for the next stage of the pipeline.

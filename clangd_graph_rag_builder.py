@@ -22,7 +22,7 @@ from clangd_symbol_nodes_builder import PathManager, PathProcessor, SymbolProces
 from clangd_call_graph_builder import ClangdCallGraphExtractorWithContainer, ClangdCallGraphExtractorWithoutContainer
 from clangd_index_yaml_parser import SymbolParser
 from neo4j_manager import Neo4jManager
-from utils import Debugger
+from memory_debugger import Debugger
 
 
 def main():

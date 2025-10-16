@@ -25,15 +25,15 @@ The update process is divided into five main phases:
 ### Phase 1: Identify Changed Files (`_identify_changed_files`)
 
 *   **Purpose**: Determines which source files (`.c`, `.h`) have been added, modified, or deleted between a specified `old_commit` and `new_commit`.
-*   **Mechanism**: Utilizes `git_manager.GitManager.get_categorized_changed_files()` to obtain a consolidated list of `added`, `modified`, and `deleted` files. Renamed files are treated as a deletion of the original path and an addition of the new path. Copied files are treated as an addition of the new path.
+*   **Mechanism**: Utilizes `git_manager.GitManager.get_categorized_changed_files()` to obtain a consolidated list of `added`, `modified`, and `deleted` files. Renamed files are treated as a deletion of the original path and an addition of the new path.
 *   **Output**: A dictionary containing lists for `added`, `modified`, and `deleted` files.
 
 ### Phase 2: Purge Stale Graph Data (`_purge_stale_data`)
 
 *   **Purpose**: Removes outdated nodes and relationships from the Neo4j graph corresponding to the identified changes.
 *   **Mechanism**: 
-    *   Deletes `:FILE` nodes for files that were truly deleted or were the original path of a renamed file.
-    *   Deletes `:FUNCTION` and `:DATA_STRUCTURE` nodes that were defined in modified, deleted, or original renamed files.
+    *   Deletes `:FILE` nodes for files that were deleted or were the original path of a renamed file.
+    *   Deletes `:FUNCTION` and `:DATA_STRUCTURE` nodes that were defined in modified, deleted, or original renamed files using a `DETACH DELETE` to also remove their relationships.
 *   **Output**: A "hole" in the graph, ready for new data.
 
 ### Phase 3: Build Self-Sufficient "Mini-Index" (`_build_mini_index`)
@@ -41,33 +41,29 @@ The update process is divided into five main phases:
 *   **Purpose**: Creates a focused, in-memory representation of the `clangd` index data relevant to the changes.
 *   **Mechanism**: 
     *   Parses the entire new `clangd` index YAML file into a `full_symbol_parser` object.
-    *   Identifies "seed symbols" (symbols defined in `added`, `modified`, or new paths of renamed files).
-    *   Expands this set to include 1-hop neighbors (callers and callees) of the seed symbols by traversing the parsed YAML data.
-    *   Creates a `mini_index_parser` (a subset `SymbolParser`) containing only these relevant symbols.
-    *   **Stores `seed_symbol_ids` as `self.seed_symbol_ids` for later use in Phase 5.**
+    *   Identifies "seed symbols" (symbols defined in `added` or `modified` files).
+    *   **Correctly expands this set to include 1-hop neighbors** by iterating through the `full_symbol_parser.symbols` data structure:
+        *   **Finds Callers**: For each seed symbol, it inspects its `references` list to find the `container_id` of any incoming calls.
+        *   **Finds Callees**: It iterates through all symbols in the parser, checking their `references` list to see if any are called by a seed symbol.
+    *   Creates a `mini_index_parser` (a subset `SymbolParser`) containing only these relevant symbols (seeds + neighbors).
+    *   Stores the initial `seed_symbol_ids` for use in the targeted RAG update in Phase 5.
 *   **Output**: A `SymbolParser` object representing the mini-index.
 
 ### Phase 4: Re-run Ingestion Pipeline on Mini-Index (`_rerun_ingestion_pipeline`)
 
 *   **Purpose**: Re-ingests the data from the mini-index into Neo4j, patching the "hole" created in Phase 2.
-*   **Mechanism**: Reuses existing processors:
-    *   `PathProcessor`: Rebuilds `:FILE` and `:FOLDER` nodes and `:CONTAINS` relationships for the mini-index.
-    *   `SymbolProcessor`: Rebuilds `:FUNCTION` and `:DATA_STRUCTURE` nodes and `:DEFINES` relationships. Uses `parallel-merge` for idempotency.
-    *   `ClangdCallGraphExtractor`: Rebuilds `:CALLS` relationships. Dynamically chooses between `ClangdCallGraphExtractorWithContainer` or `ClangdCallGraphExtractorWithoutContainer` based on the index format, correctly instantiating `FunctionSpanProvider` when needed.
-*   **Idempotency**: All relationship creation uses `MERGE` to prevent duplicates.
+*   **Mechanism**: Reuses existing processors with idempotent `MERGE` operations:
+    *   `PathProcessor`: Rebuilds file and folder structure.
+    *   `SymbolProcessor`: Rebuilds symbol nodes and `:DEFINES` relationships.
+    *   `ClangdCallGraphExtractor`: Rebuilds `:CALLS` relationships.
 
 ### Phase 5: RAG Summary Generation (`_update_summaries`)
 
 *   **Purpose**: Updates AI-generated summaries and vector embeddings for the affected parts of the graph.
 *   **Mechanism**: 
-    *   Initializes `llm_client`, `embedding_client`, and `FunctionSpanProvider`.
-    *   Instantiates `code_graph_rag_generator.RagGenerator`.
-    *   Calls `rag_generator.run_targeted_update(self.seed_symbol_ids)`:
-        *   This method expands the `seed_symbol_ids` (from Phase 3) to include 1-hop neighbors in the *Neo4j graph*.
-        *   Performs targeted summarization (code-only and context-aware) for these functions.
-        *   Rolls up summaries for affected files and their parent folders.
-        *   Generates embeddings for all nodes with new summaries.
-*   **Input**: `self.seed_symbol_ids` (from Phase 3).
+    *   Initializes the `RagGenerator`.
+    *   Calls `rag_generator.summarize_targeted_update()` with the `seed_symbol_ids` saved from Phase 3. This triggers a specialized, efficient update process within the generator, which is detailed in `summary_code_graph_rag_generator.md`.
+*   **Input**: The set of `seed_symbol_ids`.
 
 ## 5. Command-Line Arguments
 
@@ -96,5 +92,3 @@ The script accepts the following arguments:
 *   `neo4j`: Python driver for Neo4j.
 *   `PyYAML`: For YAML parsing.
 *   `tqdm`: For progress bars.
-
-This document provides a comprehensive overview of `code_graph_rag_updater.py`'s design and operation.

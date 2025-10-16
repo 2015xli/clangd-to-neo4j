@@ -2,67 +2,89 @@
 
 ## 1. Role in the Pipeline
 
-This script has a dual role. It can act as a **standalone orchestrator** to enrich an existing Neo4j code graph, or it can be invoked as the **final stage (Pass 5)** of the main `clangd_code_graph_builder.py` pipeline when the `--generate-summary` flag is used.
+This script enriches an existing Neo4j code graph with AI-generated summaries and vector embeddings. It has a dual-role architecture, providing two main entry points for different use cases:
 
-Its responsibility is to populate the graph with AI-generated summaries and vector embeddings, implementing the multi-pass strategy from `docs/code_rag_generation_plan.md` to create a knowledge base suitable for Retrieval-Augmented Generation (RAG) systems.
+*   **Full Build**: Invoked by `clangd_graph_rag_builder.py` during an initial project ingestion to summarize the entire graph from scratch.
+*   **Incremental Update**: Invoked by `clangd_graph_rag_updater.py` to efficiently update summaries for only the parts of the graph affected by code changes.
 
-## 2. Core Logic: Parallel, Multi-Pass Summarization and Embedding
+## 2. Core Logic: Modular, Reusable Passes
 
-The `RagGenerator` class orchestrates the entire process. To significantly speed up the I/O-bound tasks of calling LLM and embedding APIs, the script now processes items in parallel using a `ThreadPoolExecutor`.
+The `RagGenerator` class has been refactored to use a set of modular, reusable methods for each summarization pass. This design allows both the full build and incremental update workflows to share the same core logic, reducing code duplication and improving clarity.
+
+The core idea is to separate the "what to process" (querying for IDs) from the "how to process" (the summarization logic itself).
+
+### Core Processing Methods
+
+*   **`_summarize_functions_individually_with_ids()`**: The workhorse for Pass 1. It takes a list of function IDs, retrieves their source code, and generates a baseline `codeSummary` for each in parallel. It returns the set of function IDs that were actually updated.
+*   **`_summarize_functions_with_context_with_ids()`**: The workhorse for Pass 2. It takes a list of function IDs, gathers call graph context for each, and generates a final, context-aware `summary`. It intelligently avoids database writes if the new summary is identical to the old one and returns the set of IDs that were actually updated.
 
 ### Parallelism Strategy
 
-- **Worker Pools:** The script intelligently uses different concurrency limits based on the nature of the API being called. This is controlled by two command-line arguments:
-    - `--num-local-workers`: For locally-hosted models (`Ollama`, `SentenceTransformer`) that are CPU-bound. Defaults to half the system's CPU cores.
-    - `--num-remote-workers`: For remote, network-bound APIs (`OpenAI`, `DeepSeek`). Defaults to a higher value (e.g., 100).
-- **Client-Side Detection:** The `LlmClient` and `EmbeddingClient` classes have an `is_local` attribute, allowing the generator to automatically select the appropriate worker limit.
-- **Progress Bars:** The `tqdm` library is used to display progress for each parallel pass, providing clear user feedback.
+All I/O-bound calls to LLM and embedding APIs are heavily parallelized using a `ThreadPoolExecutor`. The script uses separate worker limits for local vs. remote APIs (`--num-local-workers`, `--num-remote-workers`) to optimize performance.
 
-### The Passes
+## 3. Full Build Workflow (`summarize_code_graph`)
 
-The process is now divided into five main passes:
+This is the comprehensive, top-to-bottom workflow used for initial project ingestion.
 
-#### Pass 1: Initial Code-Only Function Summary (`summarize_functions_individually`)
-- **Goal**: Generate a baseline summary for each function based solely on its source code.
-- **Process**: All functions requiring a summary are processed in parallel. For each function, the script retrieves its source code, sends it to the configured LLM, and stores the resulting `codeSummary` property.
+1.  **`summarize_functions_individually()`**: Queries the graph for *all* functions that have source code but are missing a `codeSummary`. It then calls the core `_summarize_functions_individually_with_ids()` method to process them.
+2.  **`summarize_functions_with_context()`**: Queries for *all* functions that have a `codeSummary` but are missing a final `summary`. It then calls the core `_summarize_functions_with_context_with_ids()` method.
+3.  **`summarize_files_and_folders()`**: After all functions are summarized, this triggers the roll-up summaries for all files, then all folders, and finally the project node.
+4.  **`generate_embeddings()`**: The final pass queries for *all* nodes in the graph with a `summary` but no `summaryEmbedding` and generates the vectors.
 
-#### Pass 2: Context-Aware Function Summary (`summarize_functions_with_context`)
-- **Goal**: Refine the initial function summaries by incorporating contextual information from the call graph.
-- **Process**: All functions with a `codeSummary` but no final `summary` are processed in parallel. For each function, it queries for caller/callee summaries and sends the enriched context to the LLM to generate the final `summary` property.
+## 4. Incremental Update Workflow (`summarize_targeted_update`)
 
-#### Pass 3: File "Roll-Up" Summaries (`_summarize_all_files`)
-- **Goal**: Generate summaries for all `:FILE` nodes.
-- **Process**: All files requiring a summary are processed in parallel. For each file, the script gathers the final `summary` of all functions it defines and sends them to the LLM to generate an overall file summary.
+This is the "surgical strike" workflow used by the graph updater. It is designed to be highly efficient by minimizing work.
 
-#### Pass 4: Folder "Roll-Up" Summaries (`_summarize_all_folders`)
-- **Goal**: Generate summaries for all `:FOLDER` nodes.
-- **Process**: This pass respects the hierarchical dependency (children must be summarized before parents). 
-    1. Folders are grouped by their directory depth.
-    2. The script iterates from the deepest level to the shallowest.
-    3. At each level, all folders are processed in parallel.
+1.  **Input**: Receives a small set of `seed_symbol_ids` corresponding to functions directly inside changed files.
+2.  **Pass 1 (Targeted)**: It calls `_summarize_functions_individually_with_ids()` with *only the seed IDs*. This ensures baseline summaries are created for any new or directly modified functions.
+3.  **Scope Expansion**: It queries the graph to find the 1-hop neighbors (callers and callees) of the seed IDs, creating an expanded set of functions whose context may have changed.
+4.  **Pass 2 (Targeted)**: It calls `_summarize_functions_with_context_with_ids()` with this *expanded set* (seeds + neighbors). This method intelligently re-evaluates the final `summary` for each function and returns the precise set of IDs for functions whose summaries were actually changed.
+5.  **Smart Roll-up**: Using the precise set of updated function IDs from the previous step, it finds only the parent `:FILE` nodes that need to be re-summarized. It then triggers the roll-up process for those files and their affected parent folders. Unchanged parts of the hierarchy are not touched.
+6.  **Embedding Generation**: It calls the standard `generate_embeddings()` method, which efficiently finds and embeds any node that was given a new or updated summary during the process.
 
-#### Pass 5: Embedding Generation (`generate_embeddings`)
-- **Goal**: Create vector embeddings for all final summaries.
-- **Process**: All nodes (`:FUNCTION`, `:FILE`, `:FOLDER`, `:PROJECT`) with a `summary` but no `summaryEmbedding` are processed in parallel. The summary text is sent to the configured embedding API, and the resulting vector is stored.
-- **Final Step**: After all embeddings are generated, it calls `neo4j_mgr.create_vector_indices()` to build the vector search indices in Neo4j.
+## 5. The Summarization Passes in Detail
 
-## 3. Key Components & Dependencies
+The generator's logic is broken into a series of dependent passes. Understanding how they interact is key to understanding the script's robustness.
 
-- **`Neo4jManager`**: Manages the connection and interaction with the Neo4j database.
-- **`FunctionSpanProvider`**: Provides the precise source code spans for functions, used in Pass 1 to extract function bodies.
-- **`LlmClient`**: An abstraction for interacting with LLM APIs. It now includes an `is_local` flag to determine the appropriate concurrency limit.
-- **`EmbeddingClient`**: An abstraction for interacting with embedding APIs, which also has an `is_local` flag.
-- **`SymbolParser` / `ParallelSymbolParser`**: Used to parse the `clangd` index file and provide symbol information, which is then used by `FunctionSpanProvider`.
+### Pass 1 & 2: Function Summarization
 
-## 4. Execution
+The core of the summarization starts at the function level.
+- **Pass 1 (`_summarize_functions_individually_with_ids`)**: Generates a `codeSummary` for a function based only on its source code. This provides a baseline understanding.
+- **Pass 2 (`_summarize_functions_with_context_with_ids`)**: Refines the summary. It uses the `codeSummary` as a starting point and enriches it with the summaries of the function's direct callers and callees. This produces the final, context-aware `summary` property.
 
-The script can be run standalone or as part of the main pipeline.
+### Pass 3 & 4: File and Folder "Roll-Up" Summaries
 
-- **Standalone:**
+Once functions have their final `summary`, the script aggregates this information upwards through the file system hierarchy.
+- **File Summaries**: A file's summary is generated by asking an LLM to synthesize the final summaries of all the functions it contains.
+- **Folder Summaries**: A folder's summary is generated by synthesizing the summaries of the files and sub-folders it directly contains. This process is performed "bottom-up" (from the deepest folders to the shallowest) to ensure that child summaries are available before the parent is processed.
+
+### Pass 5: Embedding Generation and State Management
+
+The final pass creates the vector embeddings that enable semantic search. This pass uses a simple but powerful state-based mechanism to correctly handle both new and updated nodes.
+
+- **The Subtlety**: The `generate_embeddings` method does not need to be explicitly told which nodes were updated. Instead, it relies on the state of the node in the database.
+- **Invalidation Step**: Whenever a summarization pass (Pass 2, 3, or 4) successfully generates a new or updated `summary` for a node, it performs two actions in the same database transaction:
+    1.  `SET n.summary = $new_summary`
+    2.  `REMOVE n.summaryEmbedding`
+- **Discovery Step**: The `generate_embeddings` method then runs a simple query to find its work: `MATCH (n) WHERE n.summary IS NOT NULL AND n.summaryEmbedding IS NULL`.
+- **Result**: This query naturally discovers **both** nodes that are being summarized for the first time **and** nodes whose summaries were just updated (because their old embedding was removed). This allows the embedding pass to be simple and decoupled from the others, while ensuring that no embeddings are ever stale.
+
+## 6. Key Components & Dependencies
+
+- **`Neo4jManager`**: Manages database interaction.
+- **`FunctionSpanProvider`**: Provides source code for functions.
+- **`LlmClient` / `EmbeddingClient`**: Abstractions for AI model APIs.
+- **`SymbolParser`**: Used to provide symbol info to the `FunctionSpanProvider`.
+
+## 7. Execution
+
+- **Standalone (Full Build):**
   ```bash
-  python3 code_graph_rag_generator.py <index.yaml> <project_path/> --num-local-workers 4 --num-remote-workers 50
+  python3 code_graph_rag_generator.py <index.yaml> <project_path/>
   ```
-- **Integrated:**
+- **Integrated (Full Build):**
   ```bash
-  python3 clangd_code_graph_builder.py <index.yaml> <project_path/> --generate-summary --num-local-workers 4
+  python3 clangd_graph_rag_builder.py <index.yaml> <project_path/> --generate-summary
   ```
+- **Integrated (Incremental Update):**
+  Invoked automatically by `clangd_graph_rag_updater.py` when run with the `--generate-summary` flag.

@@ -2,27 +2,17 @@
 
 ## 1. Role in the Pipeline
 
-This script acts as both a **library module** and a **standalone tool**. Its primary responsibility is to build the structural foundation of the code graph in Neo4j by creating the physical file system hierarchy (`:PROJECT`, `:FOLDER`, `:FILE`) and the logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) defined within them.
+This script is responsible for Passes 1 and 2 of the ingestion pipeline. Its purpose is to build the structural foundation of the code graph in Neo4j. It creates the physical file system hierarchy (`:PROJECT`, `:FOLDER`, `:FILE`) and the logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) defined within them, along with the crucial `:DEFINES` relationships connecting them.
 
-As a library, it's used by the main `clangd_code_graph_builder.py` orchestrator to execute Passes 1 and 2 of the ingestion pipeline.
-
-As a standalone tool, it can be used to directly parse a `clangd` index and populate a Neo4j database with the structural nodes and `:DEFINES` relationships. See the "Standalone Usage" section for details.
-
-It is designed to work on a pre-parsed, in-memory collection of `Symbol` objects provided by the `SymbolParser`.
-
-It provides two main classes:
--   `PathProcessor`: Creates all `:PROJECT`, `:FOLDER`, and `:FILE` nodes.
--   `SymbolProcessor`: Creates nodes for code symbols (e.g., `:FUNCTION`, `:DATA_STRUCTURE`) and the `:DEFINES` relationships connecting them to their files.
+It operates on the in-memory collection of `Symbol` objects provided by the `clangd_index_yaml_parser`.
 
 ## 2. Standalone Usage
 
-The script can be run directly to perform a full ingestion of file structure and symbol definitions. This is useful for debugging or for a partial ingestion that doesn't require the call graph.
+The script can be run directly to perform a partial ingestion of file structure and symbol definitions, which is useful for debugging.
 
 ```bash
-# Example: Ingest symbols using parallel-create for DEFINES relationships
-python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/ \
-    --defines-generation parallel-create \
-    --num-parse-workers 8
+# Example: Ingest symbols using the default parallel-create strategy
+python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/
 ```
 
 **All Options:**
@@ -30,71 +20,43 @@ python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/ \
 *   `index_file`: Path to the clangd index YAML file (or a `.pkl` cache file).
 *   `project_path`: Root path of the project.
 *   `--defines-generation`: Strategy for ingesting `:DEFINES` relationships (`unwind-create`, `parallel-merge`, `parallel-create`). Default: `parallel-create`.
-*   `--num-parse-workers`: Number of parallel workers for parsing the YAML index.
-*   `--cypher-tx-size`: Target items (nodes/relationships) per server-side transaction.
-*   `--ingest-batch-size`: Target items per client-side submission.
-*   `--log-batch-size`: Log progress every N items.
+*   ... and other performance tuning arguments (`--num-parse-workers`, `--cypher-tx-size`, etc.).
 
 ---
 *The following sections describe the library's internal logic.*
 
-## 3. `PathProcessor`
+## 3. Pass 1: Ingesting File & Folder Structure (`PathProcessor`)
 
-This class is responsible for Pass 1 of the ingestion pipeline. Its algorithm is straightforward:
+This pass builds the graph representation of the physical file system.
 
-1.  **Discover Paths**: It iterates through every symbol from the `SymbolParser`, inspects its declaration and definition locations, and discovers every unique, in-project file and folder path.
-2.  **`UNWIND`-based Ingestion**: It uses highly efficient, `UNWIND`-based Cypher queries to first `MERGE` all folder and file nodes in bulk, and then `MERGE` the `CONTAINS` relationships between them.
-This minimizes network round trips to the database.
+*   **Algorithm**:
+    1.  **Path Discovery**: The `PathProcessor` iterates through every symbol from the parser and inspects its declaration and definition locations. From these file URIs, it derives a unique set of all file paths and, crucially, all of their parent folder paths, ensuring the entire directory tree is captured.
+    2.  **Batched Ingestion**: It uses highly efficient, batched Cypher queries with `UNWIND` and `MERGE` to first create all `:FOLDER` and `:FILE` nodes, and then to create the `:CONTAINS` relationships between them. This minimizes network round trips and leverages Neo4j's bulk operation capabilities.
 
-## 4. `SymbolProcessor`
+## 4. Pass 2: Ingesting Symbols and Relationships (`SymbolProcessor`)
 
-This class is responsible for Pass 2 of the ingestion pipeline. It first creates the nodes for code symbols and then creates the `:DEFINES` relationships. The relationship creation logic is highly sophisticated to balance performance with correctness.
+This pass populates the graph with logical code constructs.
 
-### Symbol Node Ingestion
+### Symbol Node Creation
 
-1.  **Filtering**: The processor first filters the full list of symbols from the parser into lists of supported types. **Crucially, only nodes for `:FUNCTION` and `:DATA_STRUCTURE` (Struct, Class, Union, Enum) are currently created.** Other symbol kinds like `Variable` or `Field` are parsed but do not have nodes created for them, as they were deemed less critical for the project's RAG objectives.
-2.  **`UNWIND`-based Ingestion**: It uses `UNWIND` queries to `MERGE` all `:FUNCTION` and `:DATA_STRUCTURE` nodes in separate, efficient batches.
+*   **Filtering**: The processor first filters the full list of symbols. **A key design choice is that nodes are only created for `:FUNCTION` and `:DATA_STRUCTURE` (Struct, Class, Union, Enum) symbols.** Other symbols like variables are parsed but not materialized as nodes in the graph, as they are less critical for the primary call-graph analysis and RAG objectives.
+*   **Ingestion**: It uses batched `UNWIND` + `MERGE` queries to efficiently create all `:FUNCTION` and `:DATA_STRUCTURE` nodes.
 
-### `:DEFINES` Relationship Ingestion
+### The `:DEFINES` Relationship Challenge
 
-This is the most complex part of the script, designed to handle the high volume of relationships efficiently while avoiding database concurrency issues. The script offers three distinct strategies, controlled by the `--defines-generation` command-line flag.
+Creating the `:DEFINES` relationships (linking a file to the symbols it defines) is a major performance challenge due to the sheer volume of relationships. The script uses several sophisticated strategies to handle this efficiently.
 
-#### The Original Performance Bottleneck and Its Solution
+*   **Critical Performance Optimization**: A massive performance gain (from ~6 hours to ~1 minute on the Linux kernel) was achieved by pre-filtering the relationship data and making the Cypher `MATCH` clause more specific. Instead of a generic `MATCH (n {id: ...})`, the query now uses `MATCH (n:FUNCTION {id: ...})` or `MATCH (n:DATA_STRUCTURE {id: ...})`. This allows Neo4j to use its label-based indexes and dramatically speeds up node lookups.
 
-Initially, ingesting `:DEFINES` relationships was a significant bottleneck, taking approximately 6 hours for large codebases like the Linux kernel. This was primarily due to two factors:
-1.  **Generic `MATCH` Clause**: The Cypher query used a generic `MATCH (n {id: data.id})` to find the target symbol node. This was less efficient than specifying the node's label.
-2.  **Over-inclusion of Symbols**: The `defines_data_list` (the source data for relationships) included all symbols with a definition location, even those for which no corresponding `:FUNCTION` or `:DATA_STRUCTURE` node was created (e.g., `Variable`, `Field`). This led to many wasted `MATCH` attempts for non-existent nodes.
+Three strategies are available via the `--defines-generation` flag:
 
-**Solution**: The optimization involved:
-1.  **Pre-filtering**: The `defines_data_list` is now pre-filtered into `defines_function_list` and `defines_data_structure_list`, ensuring that only relevant symbols are processed for relationship creation.
-2.  **Type-Specific `MATCH`**: The Cypher queries now use type-specific `MATCH (n:FUNCTION {id: data.id})` or `MATCH (n:DATA_STRUCTURE {id: data.id})`. This provides the Neo4j query planner with precise information, leading to much faster node lookups.
+1.  **`parallel-create` (Default)**
+    *   **Algorithm**: Uses `apoc.periodic.iterate` with a `CREATE` clause. This is the fastest method.
+    *   **Subtlety**: This strategy is **not idempotent**. It assumes it is writing to a clean database and will create duplicate relationships if run again. It is the default because the main build pipeline always starts with a fresh database, making this a safe and optimal choice for the primary use case.
 
-This optimization dramatically reduced the ingestion time for `:DEFINES` relationships from **~6 hours to ~1 minute**, making all three strategies highly performant.
+2.  **`parallel-merge` (Idempotent & Deadlock-Safe)**
+    *   **Algorithm**: Uses `apoc.periodic.iterate` with a `MERGE` clause. This is the safest option for running on a partially-existing graph.
+    *   **Deadlock Avoidance Subtlety**: A simple parallel `MERGE` can cause deadlocks when multiple threads try to lock the same `:FILE` node simultaneously. This strategy avoids this by first grouping all `:DEFINES` relationships by their target `:FILE` node on the client side. It then passes these *groups* to `apoc.periodic.iterate`. The APOC procedure processes the groups in parallel, but since all relationships for a given file are in a single group, no two threads will ever compete for a lock on the same file node, completely eliminating the cause of deadlocks.
 
-#### `parallel-create` (Default and Fastest)
-
--   **Command**: By default, or when `--defines-generation parallel-create` is specified.
--   **Algorithm**: This strategy prioritizes maximum speed. It uses `apoc.periodic.iterate` with the `CREATE` Cypher clause for relationships. This approach has simpler locking behavior and avoids the specific type of deadlocks encountered with `MERGE`.
--   **Trade-off**: This method is **not idempotent**. It assumes the database is clean. If run on a graph that already contains data, it will create duplicate relationships. This is the default because the main pipeline always resets the database, making this a safe and fast choice for the primary use case.
-
-#### `parallel-merge` (Idempotent and Deadlock-Safe)
-
--   **Command**: When `--defines-generation parallel-merge` is specified.
--   **Algorithm**: This strategy prioritizes correctness and idempotency, for use cases where the script might be run on an existing database. It uses a highly sophisticated, two-level batching system with `apoc.periodic.iterate` and the `MERGE` Cypher clause to prevent deadlocks while still leveraging parallelism.
-    1.  **File-based Grouping**: First, all `:DEFINES` relationships are grouped by their target `:FILE` node.
-    2.  **Client-Side Batching**: The script creates a "query batch" of these file-groups. The target size of this batch is controlled by `--ingest-batch-size`, which represents the approximate number of *relationships* to include in one client submission. This allows for a client-side progress indicator.
-    3.  **Server-Side Batching**: Each "query batch" is sent to a single `apoc.periodic.iterate` call. This call processes the file-groups in parallel. Because all relationships for `fileA` are in one group and all for `fileB` are in another, the database's parallel workers never operate on the same `:FILE` node, **completely eliminating the cause of the deadlocks**.
-    4.  **Dynamic Transaction Sizing**: The `batchSize` for the `apoc` call is dynamically calculated based on the average number of relationships per file and the `--cypher-tx-size` argument. This makes the tuning parameters more predictable, as they consistently relate to the number of relationships per operation, not the number of files.
-
-#### `unwind-create` 
-
--   **Command**: When `--defines-generation unwind-create` is specified.
--   **Algorithm**: This strategy uses direct `UNWIND` with the `CREATE` Cypher clause for relationships, batching at the client side. It avoids `apoc.periodic.iterate`.
--   **Performance Note**: While initially slower before the type-specific `MATCH` optimization, this strategy is now also highly performant. **Empirically, (before separating the label type specific matching) this strategy had been found to be  significantly slower (approximately 5 times slower on a 8-core system) than `parallel-create` or "paralle-merge" for ingesting `:DEFINES` relationships in large projects like the Linux kernel.** This is likely due to the overhead of repeated `MATCH` operations within each `UNWIND` transaction, which can be less efficient than `apoc.periodic.iterate`'s parallel sub-transactions for this specific type of relationship and data volume.
-
-## 5. Performance Tuning Arguments
-
-The script's behavior can be fine-tuned with several arguments:
--   `--defines-generation`: Specifies the strategy for ingesting `:DEFINES` relationships.
--   `--cypher-tx-size`: Sets the target number of items for a server-side transaction. Default is `2000`.
--   `--ingest-batch-size`: Sets the target number of items for a single client-side submission, which corresponds to one progress "dot". Defaults to `cypher-tx-size * num-parse-workers` to provide a reasonable degree of parallelism.
+3.  **`unwind-create`**
+    *   **Algorithm**: A simpler, sequential strategy that uses client-side batching with `UNWIND` and `CREATE`. It does not use the APOC library. While now much faster due to the `MATCH` clause optimization, it is empirically slower than the parallel APOC-based methods for very large datasets.

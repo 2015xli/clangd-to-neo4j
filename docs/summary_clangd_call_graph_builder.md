@@ -2,11 +2,7 @@
 
 ## 1. Role in the Pipeline
 
-This script acts as both a **library module** and a **standalone tool**. Its primary responsibility is to perform Pass 3 of the ingestion pipeline: identifying all function call relationships (`:CALLS`) and either ingesting them into Neo4j or generating the Cypher queries to do so.
-
-As a library, it's used by the main `clangd_code_graph_builder.py` orchestrator. It provides a set of classes (`BaseClangdCallGraphExtractor`, `ClangdCallGraphExtractorWithContainer`, `ClangdCallGraphExtractorWithoutContainer`) that encapsulate the extraction logic.
-
-As a standalone tool, it can be used to extract the call graph from a `clangd` index and either ingest it directly into an existing Neo4j database or save the Cypher queries to a file for later use. See the "Standalone Usage" section for details.
+This script is responsible for Pass 3 of the ingestion pipeline: identifying all function call relationships (`:CALLS`) and ingesting them into Neo4j. It functions as both a library module for the main builder and a standalone tool for debugging or partial ingestion.
 
 ## 2. Standalone Usage
 
@@ -23,7 +19,7 @@ python3 clangd_call_graph_builder.py /path/to/index.yaml /path/to/project/
 **All Options:**
 
 *   `input_file`: Path to the clangd index YAML file (or a `.pkl` cache file).
-*   `span_path`: Path to a pre-computed spans YAML file, or a project directory to scan for spans (required for older clangd index formats).
+*   `span_path`: Path to a project directory to scan for function spans (required for older clangd index formats).
 *   `--ingest`: If set, ingest the call graph directly into Neo4j. Otherwise, a `generated_call_graph_cypher_queries.cql` file will be created.
 *   `--stats`: Show detailed statistics about the extracted call graph.
 *   `--num-parse-workers`: Number of parallel workers for parsing the YAML index.
@@ -32,53 +28,42 @@ python3 clangd_call_graph_builder.py /path/to/index.yaml /path/to/project/
 ---
 *The following sections describe the library's internal logic.*
 
-## 3. Core Logic
+## 3. Core Algorithm: Two Extraction Strategies
 
-The fundamental challenge in building a call graph is that the `clangd` index provides call sites, but doesn't explicitly link them to the function that contains them (the caller). This module addresses this by offering two distinct strategies, adapting to the format of the clangd index.
+The fundamental challenge in building a call graph is that the `clangd` index provides call sites (references to functions) but doesn't always explicitly link a call site to the function that contains it (the caller). This module solves this by automatically selecting one of two strategies based on the features of the parsed `clangd` index.
 
-### Architecture
+The logic is encapsulated in two classes that inherit from a common `BaseClangdCallGraphExtractor`.
 
-The module employs an inheritance-based architecture for clarity and code reuse:
+### Strategy 1: High-Speed Path (`ClangdCallGraphExtractorWithContainer`)
 
-*   **`BaseClangdCallGraphExtractor`**: This is the base class that holds common attributes (`symbol_parser`, `log_batch_size`) and shared methods like `get_call_relation_ingest_query` and `generate_statistics`.
-*   **`ClangdCallGraphExtractorWithContainer`**: This class is used when the clangd index (version 21.x and later) provides the `Container` field in `!Refs` documents. It directly uses this field for efficient call graph extraction.
-*   **`ClangdCallGraphExtractorWithoutContainer`**: This class is used for older clangd index formats (pre-21.x) that lack the `Container` field. It falls back to using `tree-sitter` generated function spans and spatial lookup.
+This strategy is used for modern `clangd` index formats (version 21.x and later) that provide a `Container` field for references.
 
-### Algorithm Details
+*   **Prerequisite**: The `SymbolParser` detects that `has_container_field` is `True`.
+*   **Algorithm**:
+    1.  The extractor iterates through every `Symbol` and its list of `references`.
+    2.  For each reference, it checks if two conditions are met:
+        *   The `reference.container_id` exists and is not a null placeholder (`'0000000000000000'`).
+        *   The `reference.kind` indicates a function call (e.g., `20` or `28`).
+    3.  If both are true, the `container_id` is the ID of the **caller function**, and the symbol being iterated is the **callee function**.
+    4.  A `CallRelation` is recorded immediately.
+*   **Subtlety**: This method is extremely fast and efficient because it is a pure in-memory operation on the already-parsed data. It requires no file I/O, no source code parsing with `tree-sitter`, and no complex lookups.
 
-Both extractor classes are initialized with a `SymbolParser` object, which provides the pre-parsed symbols and functions from the clangd index.
+### Strategy 2: Legacy Fallback Path (`ClangdCallGraphExtractorWithoutContainer`)
 
-#### `ClangdCallGraphExtractorWithContainer` (New Format Strategy)
+This strategy is used for older `clangd` index formats that lack the `Container` field. It relies on parsing the source code to spatially determine the caller for each call site.
 
-This strategy is used when `symbol_parser.has_container_field` is `True`.
-
-1.  **Direct Call Relationship Extraction**: The `extract_call_relationships` method directly iterates through all `Symbol` objects and their `references` (from the `SymbolParser`).
-2.  **Leveraging `Container` Field**: If a `reference.container_id` is present (and not the '0' placeholder ID) and the `reference.kind` indicates a call (e.g., `28` or `20`), it directly identifies the `caller_id`.
-3.  **Caller Validation**: It then looks up the `caller_symbol` using `caller_id` and asserts that it exists and is a function.
-4.  **Relation Recording**: A `(caller, callee)` `CallRelation` object is recorded. This method is highly efficient as it bypasses `tree-sitter` span extraction entirely.
-
-#### `ClangdCallGraphExtractorWithoutContainer` (Legacy Format Strategy)
-
-This strategy is used when `symbol_parser.has_container_field` is `False`.
-
-1.  **Span Loading**: This class can acquire function span data in two ways:
-    *   `load_spans_from_project(project_path)`: This is the primary method used by the orchestrator. It encapsulates the `SpanExtractor` logic, running it on a project directory to generate function spans on the fly.
-    *   `load_function_spans(spans_file)`: This method can be used to load a pre-computed YAML file containing function spans.
-2.  **Span Matching**: After loading the spans, it matches the `clangd` function symbols (from the `SymbolParser` object) to the `tree-sitter` function spans. This uses a composite key of `(function_name, file_uri, start_line, start_column)` and enriches the `Symbol` objects with a memory-efficient `RelativeLocation` for their function body.
-3.  **Call Relationship Extraction**: The `extract_call_relationships` method uses an optimized, spatially-indexed approach to find call relationships.
-    *   **Spatial Index Creation**: It builds an in-memory "spatial index" from the function symbols that have a body location. This is a dictionary where keys are file URIs, and values are lists of function bodies in that file.
-    *   **Optimized Lookup**: It iterates through every symbol's references (`Kind: 12` or `4`). For each call site, it uses the index to efficiently find the containing function body (the caller).
-    *   **Relation Recording**: Once the containing function is found, it records a `(caller, callee)` `CallRelation` object.
-
-### Memory Management
-
-Both classes are designed to be memory-efficient. They delete large intermediate data structures (like the span data and the spatial index) as soon as they are no longer needed, and trigger the garbage collector to keep the memory footprint low.
+*   **Prerequisite**: The `SymbolParser` detects that `has_container_field` is `False`.
+*   **Algorithm**:
+    1.  **Span Loading**: The `FunctionSpanProvider` is invoked first. It parses the entire project with `tree-sitter` to find the precise body location of every function and enriches the in-memory `Symbol` objects with this `body_location` data.
+    2.  **Build Spatial Index**: The extractor builds a crucial in-memory data structure: a dictionary named `file_to_function_bodies_index`.
+        *   **Keys**: File URIs (`'file:///path/to/file.c'`).
+        *   **Values**: A list of all function bodies found in that file, sorted by their starting line number.
+    3.  **Call Site Lookup**: The extractor iterates through every symbol and its references, looking for potential call sites (references with `Kind: 4` or `12`).
+    4.  For each call site, it performs a fast lookup in the spatial index using the call site's file URI. This gives it the sorted list of all functions in that file.
+    5.  It then performs a quick linear scan of this list, using the `_is_location_within_function_body` helper to check which function's body coordinates contain the call site's coordinates.
+    6.  Once the containing function (the **caller**) is found, a `CallRelation` is recorded.
+*   **Subtlety**: This fallback is much more I/O-intensive due to the `tree-sitter` parsing, but the in-memory spatial index makes the subsequent lookup phase very fast, avoiding a brute-force search for every call site.
 
 ## 4. Output
 
-Once all call relations have been discovered, the `get_call_relation_ingest_query` method (from the base class) is called.
-
--   **Efficient Query Generation**: This method generates a single, highly performant, parameterized Cypher query using the `UNWIND` clause.
--   **Return Value**: It returns a tuple containing the Cypher query string and a dictionary of parameters.
-
-This output is then passed back to the main orchestrator, which executes the query to merge all `:CALLS` relationships into the graph.
+Regardless of the strategy used, the final output is a single list of all `CallRelation` objects found. The `ingest_call_relations` method then batches these relations and uses a parameterized `UNWIND` Cypher query to merge all `:CALLS` relationships into the graph in an efficient, bulk operation.

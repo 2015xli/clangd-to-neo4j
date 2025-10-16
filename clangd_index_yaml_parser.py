@@ -15,7 +15,7 @@ import gc
 import math
 import concurrent.futures
 import itertools
-from utils import Debugger # Import Debugger
+from memory_debugger import Debugger # Import Debugger
 
 logger = logging.getLogger(__name__)
 
