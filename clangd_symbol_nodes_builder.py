@@ -223,7 +223,7 @@ class SymbolProcessor:
 
                 print(".", end="", flush=True)
             print(flush=True)
-            logger.info(f"  Total FUNCTIONS DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
+            logger.info(f"  Total DEFINES FUNCTIONS relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
         total_rels_created = 0
@@ -253,7 +253,7 @@ class SymbolProcessor:
 
                 print(".", end="", flush=True)
             print(flush=True)
-            logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created}, merged: {total_rels_merged}")
+            logger.info(f"  Total DEFINES DATA_STRUCTURE relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         logger.info("Finished DEFINES relationship ingestion.")
 
@@ -333,7 +333,7 @@ class SymbolProcessor:
             print(".", end="", flush=True)
 
         print(flush=True)
-        logger.info(f"  Total {node_label_filter} relationships created: {total_rels_created}, merged: {total_rels_merged}")
+        logger.info(f"  Total DEFINES {node_label_filter} relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
     def _ingest_defines_relationships_unwind_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:

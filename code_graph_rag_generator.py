@@ -73,39 +73,55 @@ class RagGenerator:
         self.summarize_files_and_folders()
         self.generate_embeddings()
 
-    def summarize_targeted_update(self, seed_symbol_ids: set):
-        """Runs a targeted, multi-pass summarization starting from a set of seed symbols."""
-        if not seed_symbol_ids:
-            logging.info("No seed symbols provided for targeted update. Skipping.")
+    def summarize_targeted_update(self, seed_symbol_ids: set, structurally_changed_files: dict):
+        """
+        Runs a targeted, multi-pass summarization handling both content and structural changes.
+        """
+        if not seed_symbol_ids and not any(structurally_changed_files.values()):
+            logging.info("No seed symbols or structural changes provided for targeted update. Skipping.")
             return
 
-        logging.info(f"\n--- Starting Targeted RAG Update for {len(seed_symbol_ids)} seed symbols ---")
+        logging.info(f"\n--- Starting Targeted RAG Update for {len(seed_symbol_ids)} seed symbols and {sum(len(v) for v in structurally_changed_files.values())} structural file changes ---")
 
-        # Pass 1: Code-only summary for the functions directly changed.
+        # --- Function Summary Passes (Content Changes) ---
         logging.info("Targeted Update - Pass 1: Summarizing changed functions individually...")
         updated_code_summary_ids = self._summarize_functions_individually_with_ids(list(seed_symbol_ids))
         logging.info(f"{len(updated_code_summary_ids)} functions received a new code summary.")
 
-        # Pass 2: Context-aware summary for changed functions and their neighbors.
         logging.info("Targeted Update - Pass 2: Summarizing functions with context...")
-        neighbor_ids = self._get_neighbor_ids(seed_symbol_ids)
+        neighbor_ids = self._get_neighbor_ids(updated_code_summary_ids)
         all_function_ids_to_process = seed_symbol_ids.union(neighbor_ids)
-        logging.info(f"Expanded scope for Pass 2 to {len(all_function_ids_to_process)} total functions (seeds + neighbors).")
+        logging.info(f"Expanded scope for Pass 2 to {len(all_function_ids_to_process)} total functions.")
         
         updated_final_summary_ids = self._summarize_functions_with_context_with_ids(list(all_function_ids_to_process))
-        
-        if not updated_final_summary_ids:
-            logging.info("No function final summaries were updated. Targeted update complete.")
-            return
-        
-        logging.info(f"Completed function summaries. {len(updated_final_summary_ids)} functions received a new final summary in Pass 2.")
+        logging.info(f"{len(updated_final_summary_ids)} functions received a new final summary.")
 
-        # Passes 3 & 4: Find the files containing these updated functions and roll up summaries.
-        starting_file_paths = self._find_files_for_updated_symbols(updated_final_summary_ids)
-        if starting_file_paths:
-            self._rollup_summaries_from_files(starting_file_paths)
+        # --- File & Folder Roll-up Passes (Content + Structural Changes) ---
+        
+        # 1. Identify files that trigger a file-level re-summary
+        files_with_summary_changes = self._find_files_for_updated_symbols(updated_final_summary_ids)
+        added_files = set(structurally_changed_files.get('added', []))
+        modified_files = set(structurally_changed_files.get('modified', []))
+        files_to_resummarize = files_with_summary_changes.union(added_files).union(modified_files)
+        self._summarize_files_with_paths(files_to_resummarize)
 
-        # Pass 5: Generate embeddings for all nodes that have a new summary.
+        # 2. Identify all folders that need their summaries rolled up
+        deleted_files = set(structurally_changed_files.get('deleted', []))
+        all_trigger_files = files_to_resummarize.union(deleted_files)
+        if not all_trigger_files:
+            logging.info("No file or folder roll-up needed.")
+        else:
+            all_affected_folders_paths = set()
+            for file_path in all_trigger_files:
+                parent = os.path.dirname(file_path)
+                while parent and parent != '.':
+                    all_affected_folders_paths.add(parent)
+                    parent = os.path.dirname(parent)
+            
+            self._summarize_folders_with_paths(all_affected_folders_paths)
+            self._summarize_project()
+
+        # --- Final Pass ---
         self.generate_embeddings()
         logging.info("--- Finished Targeted RAG Update ---")
 
@@ -132,53 +148,14 @@ class RagGenerator:
         """Finds the file paths that define a given set of symbols."""
         if not symbol_ids:
             return set()
+        # Optimized query with DISTINCT and a label hint on the symbol node.
         query = """
         UNWIND $symbol_ids as symbolId
-        MATCH (f:FILE)-[:DEFINES]->(s) WHERE s.id = symbolId
-        RETURN f.path AS path
+        MATCH (f:FILE)-[:DEFINES]->(s:FUNCTION {id: symbolId})
+        RETURN DISTINCT f.path AS path
         """
         results = self.neo4j_mgr.execute_read_query(query, {"symbol_ids": list(symbol_ids)})
         return {r['path'] for r in results}
-
-    def _rollup_summaries_from_files(self, starting_file_paths: set):
-        """For a given set of files, re-summarizes them and all their parent folders."""
-        if not starting_file_paths:
-            return
-        
-        logging.info(f"Rolling up summaries starting from {len(starting_file_paths)} files.")
-        max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
-
-        self._parallel_process(
-            items=list(starting_file_paths),
-            process_func=self._summarize_one_file,
-            max_workers=max_workers,
-            desc="Targeted Update: File Roll-up"
-        )
-
-        query = """
-        UNWIND $paths as filePath
-        MATCH (f:FILE {path: filePath})<-[:CONTAINS*]-(folder:FOLDER)
-        RETURN DISTINCT folder.path as path, folder.name as name
-        """
-        parent_folders = self.neo4j_mgr.execute_read_query(query, {"paths": list(starting_file_paths)})
-        if not parent_folders: return
-
-        folders_by_depth = {}
-        for folder in parent_folders:
-            depth = folder['path'].count(os.sep)
-            if depth not in folders_by_depth:
-                folders_by_depth[depth] = []
-            folders_by_depth[depth].append(folder)
-
-        for depth in sorted(folders_by_depth.keys(), reverse=True):
-            self._parallel_process(
-                items=folders_by_depth[depth],
-                process_func=lambda f: self._summarize_one_folder(f['path'], f['name']),
-                max_workers=max_workers,
-                desc=f"Targeted Update: Folder Roll-up (Depth {depth})"
-            )
-        
-        self._summarize_project()
 
     # --- Pass 1 Methods ---
     def summarize_functions_individually(self):
@@ -315,43 +292,57 @@ class RagGenerator:
         if not final_summary: return None
 
         if final_summary != old_summary:
-            update_query = "MATCH (n:FUNCTION {id: $id}) SET n.summary = $summary"
+            update_query = "MATCH (n:FUNCTION {id: $id}) SET n.summary = $summary REMOVE n.summaryEmbedding"
             self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": final_summary})
             return func_id
         
         return None
 
+    def _build_contextual_prompt(self, code_summary, caller_summaries, callee_summaries) -> str:
+        caller_text = ", ".join([s for s in caller_summaries if s]) or "none"
+        callee_text = ", ".join([s for s in callee_summaries if s]) or "none"
+        return (
+            f"A C function is described as: '{code_summary}'.\n"
+            f"It is called by functions with these responsibilities: [{caller_text}].\n"
+            f"It calls other functions to do the following: [{callee_text}].\n\n"
+            f"Based on this context, what is the high-level purpose of this function in the overall system? "
+            f"Describe it in one concise sentence."
+        )
+
     # --- Pass 3 & 4 Methods ---
     def summarize_files_and_folders(self):
-        """Generates summaries for files and folders via roll-up."""
+        """Generates summaries for all files and folders via roll-up."""
         logging.info("\n--- Starting File and Folder Summarization ---")
-        self._summarize_all_files()    # Pass 3
-        self._summarize_all_folders()  # Pass 4
+        self._summarize_all_files()
+        self._summarize_all_folders()
         self._summarize_project()
         logging.info("--- Finished File and Folder Summarization ---")
 
     def _summarize_all_files(self):
-        logging.info("\n--- Starting Pass 3: Summarizing Files ---")
-        files_to_process = self.neo4j_mgr.execute_read_query("MATCH (f:FILE) WHERE f.summary IS NULL RETURN f.path AS path")
+        logging.info("\n--- Starting Pass 3: Summarizing All Files ---")
+        # Query for all files, not just ones with summary is null, to ensure correctness on re-runs
+        files_to_process = self.neo4j_mgr.execute_read_query("MATCH (f:FILE) RETURN f.path AS path")
         if not files_to_process:
-            logging.info("No files require summarization.")
+            logging.info("No files found to summarize.")
             return
+        
+        file_paths = {f['path'] for f in files_to_process}
+        self._summarize_files_with_paths(file_paths)
 
+    def _summarize_files_with_paths(self, file_paths: set):
+        """Core logic for summarizing a specific set of FILE nodes."""
+        if not file_paths:
+            return
+        logging.info(f"Summarizing {len(file_paths)} FILE nodes...")
         max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
-        logging.info(f"Using {max_workers} parallel workers for file summarization.")
-
-        file_paths = [file['path'] for file in files_to_process]
-
         self._parallel_process(
-            items=file_paths,
+            items=list(file_paths),
             process_func=self._summarize_one_file,
             max_workers=max_workers,
-            desc="Pass 3: File Summaries"
+            desc="File Summaries"
         )
-        logging.info("--- Finished Pass 3 ---")
 
     def _summarize_one_file(self, file_path: str):
-        # logging.info(f"Summarizing file: {file_path}")
         query = """
         MATCH (f:FILE {path: $path})-[:DEFINES]->(func:FUNCTION)
         WHERE func.summary IS NOT NULL
@@ -365,42 +356,50 @@ class RagGenerator:
         summary = self.llm_client.generate_summary(prompt)
         if not summary: return
 
-        update_query = "MATCH (f:FILE {path: $path}) SET f.summary = $summary"
+        update_query = "MATCH (f:FILE {path: $path}) SET f.summary = $summary REMOVE f.summaryEmbedding"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"path": file_path, "summary": summary})
-        # logging.info(f"-> Stored summary for file {file_path}")
 
     def _summarize_all_folders(self):
-        logging.info("\n--- Starting Pass 4: Summarizing Folders (bottom-up) ---")
-        query = "MATCH (f:FOLDER) WHERE f.summary IS NULL RETURN f.path AS path, f.name as name"
-        folders_to_process = self.neo4j_mgr.execute_read_query(query)
+        logging.info("\n--- Starting Pass 4: Summarizing All Folders (bottom-up) ---")
+        folders_to_process = self.neo4j_mgr.execute_read_query("MATCH (f:FOLDER) RETURN f.path AS path")
         if not folders_to_process:
-            logging.info("No folders require summarization.")
+            logging.info("No folders found to summarize.")
             return
 
-        # Group folders by depth for level-by-level parallel processing
+        folder_paths = {f['path'] for f in folders_to_process}
+        self._summarize_folders_with_paths(folder_paths)
+
+    def _summarize_folders_with_paths(self, folder_paths: set):
+        """Core logic for summarizing a specific set of FOLDER nodes."""
+        if not folder_paths:
+            return
+
+        logging.info(f"Found {len(folder_paths)} potentially affected FOLDER nodes. Verifying existence in graph...")
+        folder_details_query = "UNWIND $paths as path MATCH (f:FOLDER {path: path}) RETURN f.path as path, f.name as name"
+        folder_details = self.neo4j_mgr.execute_read_query(folder_details_query, {"paths": list(folder_paths)})
+
+        if not folder_details:
+            logging.info("No affected folders exist in the graph. No roll-up needed.")
+            return
+
+        logging.info(f"Rolling up summaries for {len(folder_details)} existing FOLDER nodes...")
         folders_by_depth = {}
-        for folder in folders_to_process:
+        for folder in folder_details:
             depth = folder['path'].count(os.sep)
             if depth not in folders_by_depth:
                 folders_by_depth[depth] = []
             folders_by_depth[depth].append(folder)
 
         max_workers = self.num_local_workers if self.llm_client.is_local else self.num_remote_workers
-        logging.info(f"Using {max_workers} parallel workers for folder summarization.")
-
-        # Process level by level, from deepest to shallowest
         for depth in sorted(folders_by_depth.keys(), reverse=True):
-            folders_at_this_level = folders_by_depth[depth]
             self._parallel_process(
-                items=folders_at_this_level,
+                items=folders_by_depth[depth],
                 process_func=lambda f: self._summarize_one_folder(f['path'], f['name']),
                 max_workers=max_workers,
-                desc=f"Pass 4: Folder Summaries (Depth {depth})"
+                desc=f"Folder Roll-up (Depth {depth})"
             )
-        logging.info("--- Finished Pass 4 ---")
 
     def _summarize_one_folder(self, folder_path: str, folder_name: str):
-        # logging.info(f"Summarizing folder: {folder_path}")
         query = """
         MATCH (parent:FOLDER {path: $path})-[:CONTAINS]->(child)
         WHERE child.summary IS NOT NULL
@@ -414,9 +413,8 @@ class RagGenerator:
         summary = self.llm_client.generate_summary(prompt)
         if not summary: return
 
-        update_query = "MATCH (f:FOLDER {path: $path}) SET f.summary = $summary"
+        update_query = "MATCH (f:FOLDER {path: $path}) SET f.summary = $summary REMOVE f.summaryEmbedding"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"path": folder_path, "summary": summary})
-        # logging.info(f"-> Stored summary for folder {folder_path}")
 
     def _summarize_project(self):
         """Summarizes the top-level PROJECT node."""
@@ -442,7 +440,7 @@ class RagGenerator:
 
     # --- Pass 5 Methods ---
     def generate_embeddings(self):
-        """PASS 5: Generates and stores embeddings for all generated summaries."""
+        """PASS 5: Generates and stores embeddings for all generated summaries in batches."""
         logging.info("\n--- Starting Pass 5: Generating Embeddings ---")
         nodes_to_embed = self._get_nodes_for_embedding()
         if not nodes_to_embed:
@@ -451,15 +449,37 @@ class RagGenerator:
 
         logging.info(f"Found {len(nodes_to_embed)} nodes with summaries to embed.")
 
-        max_workers = self.num_local_workers if self.embedding_client.is_local else self.num_remote_workers
-        logging.info(f"Using {max_workers} parallel workers for Pass 5.")
+        # Step 1: Batch generate embeddings
+        # The sentence-transformer library will show its own progress bar here.
+        summaries = [node['summary'] for node in nodes_to_embed]
+        embeddings = self.embedding_client.generate_embeddings(summaries)
 
-        self._parallel_process(
-            items=nodes_to_embed,
-            process_func=self._embed_one_node,
-            max_workers=max_workers,
-            desc="Pass 5: Embeddings"
-        )
+        # Step 2: Prepare data for batch database update
+        update_params = []
+        for node, embedding in zip(nodes_to_embed, embeddings):
+            if embedding:
+                update_params.append({
+                    'elementId': node['elementId'],
+                    'embedding': embedding
+                })
+
+        if not update_params:
+            logging.warning("Embedding generation resulted in no data to update.")
+            return
+
+        # Step 3: Batch update the database
+        ingest_batch_size = 1000  # Sensible batch size for DB updates
+        logging.info(f"Updating {len(update_params)} nodes in the database in batches of {ingest_batch_size}...")
+        
+        update_query = """
+        UNWIND $batch AS data
+        MATCH (n) WHERE elementId(n) = data.elementId
+        SET n.summaryEmbedding = data.embedding
+        """
+        
+        for i in tqdm(range(0, len(update_params), ingest_batch_size), desc="Updating DB"):
+            batch = update_params[i:i + ingest_batch_size]
+            self.neo4j_mgr.execute_autocommit_query(update_query, params={'batch': batch})
 
         logging.info("--- Finished Pass 5 ---")
 
@@ -474,22 +494,7 @@ class RagGenerator:
         """
         return self.neo4j_mgr.execute_read_query(query)
 
-    def _embed_one_node(self, node: dict):
-        element_id = node['elementId']
-        summary = node['summary']
-        # logging.info(f"Generating embedding for node: {element_id}")
-
-        embedding = self.embedding_client.generate_embedding(summary)
-        if not embedding:
-            logging.warning(f"Failed to generate embedding for node {element_id}. Skipping.")
-            return
-
-        update_query = """
-        MATCH (n) WHERE elementId(n) = $elementId
-        SET n.summaryEmbedding = $embedding
-        """
-        self.neo4j_mgr.execute_autocommit_query(update_query, {"elementId": element_id, "embedding": embedding})
-        # logging.info(f"-> Stored summaryEmbedding for node {element_id}")
+    
 
     # --- Utility Methods ---
     def _get_source_code_from_span(self, span: dict) -> str:
@@ -542,7 +547,7 @@ def main():
             symbol_parser = SymbolParser(index_file_path=args.index_file)
             symbol_parser.parse(num_workers=args.num_parse_workers)
 
-            span_provider = FunctionSpanProvider(args.project_path, symbol_parser)
+            span_provider = FunctionSpanProvider(symbol_parser, [args.project_path])
             generator = RagGenerator(
                 neo4j_mgr, 
                 args.project_path, 

@@ -90,7 +90,15 @@ def main():
                 return 1
 
             neo4j_mgr.reset_database()
-            neo4j_mgr.create_project_node(path_manager.project_path)
+            # Stamp the project node with the current commit hash.
+            try:
+                git_mgr = GitManager(args.project_path)
+                commit_hash = git_mgr.repo.head.object.hexsha
+                neo4j_mgr.update_project_node(path_manager.project_path, {"commit_hash": commit_hash})
+                logger.info(f"Stamped PROJECT node with commit hash: {commit_hash}")
+            except Exception as e:
+                logger.warning(f"Could not get git commit hash: {e}. Proceeding without it.")
+                neo4j_mgr.update_project_node(path_manager.project_path, {})
             neo4j_mgr.create_constraints()
 
             # --- Phase 1: Ingest File & Folder Structure ---
@@ -153,7 +161,7 @@ def main():
                 if span_provider is None:
                     logger.info("Creating new FunctionSpanProvider for summary generation.")
                     from function_span_provider import FunctionSpanProvider
-                    span_provider = FunctionSpanProvider(args.project_path, symbol_parser)
+                    span_provider = FunctionSpanProvider(symbol_parser, [args.project_path], log_batch_size=args.log_batch_size)
                 else:
                     logger.info("Reusing FunctionSpanProvider created in Pass 3.")
 

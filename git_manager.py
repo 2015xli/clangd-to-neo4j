@@ -174,3 +174,7 @@ class GitManager:
         updater_categories['deleted'] = list(set(updater_categories['deleted']))
         
         return updater_categories
+
+    def get_head_commit_hash(self) -> str:
+        """Returns the hexsha of the current HEAD commit."""
+        return self.repo.head.object.hexsha

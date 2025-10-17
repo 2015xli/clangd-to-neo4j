@@ -18,7 +18,14 @@
             "request": "launch",
             "program": "clangd_code_graph_builder.py",
             "args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10"]
+        },
+        {
+            "name": "Python Debugger: graph rag updater",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "clangd_graph_rag_updater.py",
+            "args": ["../../mini-jvm/korp_clangd_21.x.yaml", "../../mini-jvm/", "--generate-summary"]
         }
-
+        
     ]
 }

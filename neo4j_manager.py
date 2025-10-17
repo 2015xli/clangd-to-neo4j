@@ -52,13 +52,26 @@ class Neo4jManager:
             for constraint in constraints:
                 session.run(constraint)
     
-    def create_project_node(self, project_path: str) -> None:
+    def update_project_node(self, project_path: str, properties: Dict[str, Any]) -> None:
+        """Finds or creates the PROJECT node and updates its properties."""
         with self.driver.session() as session:
+            # Ensure the name is set if not already present
+            if 'name' not in properties:
+                properties['name'] = os.path.basename(project_path) or "Project"
+            
             session.run(
-                "MERGE (p:PROJECT {path: $path}) SET p.name = $name",
-                {"path": project_path, "name": os.path.basename(project_path) or "Project"}
+                "MERGE (p:PROJECT {path: $path}) SET p += $properties",
+                {"path": project_path, "properties": properties}
             )
     
+    def get_graph_commit_hash(self, project_path: str) -> Optional[str]:
+        """Fetches the commit_hash property from the PROJECT node."""
+        query = "MATCH (p:PROJECT {path: $path}) RETURN p.commit_hash AS hash"
+        result = self.execute_read_query(query, {"path": project_path})
+        if result and result[0] and result[0].get('hash'):
+            return result[0]['hash']
+        return None
+
     def process_batch(self, batch: List[Tuple[str, Dict]]) -> List[Any]: # Returns list of summary.counters
         all_counters = []
         with self.driver.session() as session:
@@ -110,8 +123,8 @@ class Neo4jManager:
             while True:
                 del_folders_query = """
                 MATCH (d:FOLDER)
-                WHERE NOT EXISTS((d)<-[:CONTAINS]-()) AND NOT (d)-[:CONTAINS]->()
-                WITH d LIMIT 1000
+                // WHERE NOT EXISTS((d)<-[:CONTAINS]-()) AND NOT (d)-[:CONTAINS]->()
+                WHERE NOT (d)-[:CONTAINS]->()
                 DETACH DELETE d
                 RETURN count(d)
                 """
@@ -132,7 +145,7 @@ class Neo4jManager:
         
         query = """
         UNWIND $paths AS path
-        MATCH (file:FILE {path: path})<-[:DEFINES]-(s)
+        MATCH (file:FILE {path: path})-[:DEFINES]->(s)
         WHERE s:FUNCTION OR s:DATA_STRUCTURE
         DETACH DELETE s
         """

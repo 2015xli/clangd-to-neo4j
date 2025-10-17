@@ -62,8 +62,8 @@ The update process is divided into five main phases:
 *   **Purpose**: Updates AI-generated summaries and vector embeddings for the affected parts of the graph.
 *   **Mechanism**: 
     *   Initializes the `RagGenerator`.
-    *   Calls `rag_generator.summarize_targeted_update()` with the `seed_symbol_ids` saved from Phase 3. This triggers a specialized, efficient update process within the generator, which is detailed in `summary_code_graph_rag_generator.md`.
-*   **Input**: The set of `seed_symbol_ids`.
+    *   Calls `rag_generator.summarize_targeted_update()` with the `seed_symbol_ids` saved from Phase 3.
+*   **Result-Driven Workflow Subtlety**: This triggers a highly efficient, multi-pass process within the `RagGenerator`. The key to its efficiency is that it's a result-driven workflow. Pass 1 (code-only summaries) returns the precise set of functions that were actually updated. This set is then used to define the scope for Pass 2 (context-aware summaries). Pass 2, in turn, returns the precise set of functions whose final `summary` property changed. This final set is then used to determine the exact files and folders that require their "roll-up" summaries to be recalculated. This prevents unnecessary processing of functions, files, or folders that were not affected by the initial code changes.
 
 ## 5. Command-Line Arguments
 
