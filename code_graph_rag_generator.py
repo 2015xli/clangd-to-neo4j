@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, Callable, List
 from tqdm import tqdm
 
+import input_params
 from neo4j_manager import Neo4jManager
 from clangd_index_yaml_parser import SymbolParser
 from function_span_provider import FunctionSpanProvider
@@ -512,34 +513,33 @@ class RagGenerator:
             logging.error(f"Error reading file {full_path}: {e}")
             return ""
 
+import input_params
+from pathlib import Path
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    try:
-        default_workers = math.ceil(os.cpu_count() / 2)
-    except (NotImplementedError, TypeError):
-        default_workers = 1
+    parser = argparse.ArgumentParser(description='Generate summaries and embeddings for a code graph.')
+    
+    # Add argument groups from the centralized module
+    input_params.add_core_input_args(parser)
+    input_params.add_rag_args(parser)
+    input_params.add_worker_args(parser)
 
-    parser = argparse.ArgumentParser(description='Generate summaries and embeddings for a code graph, as per docs/code_rag_generation_plan.md.')
-    parser.add_argument('index_file', help='Path to the clangd index YAML file (or a .pkl cache file).')
-    parser.add_argument('project_path', help='The absolute path to the project root, used to resolve relative file paths.')
-    parser.add_argument('--api', choices=['openai', 'deepseek', 'ollama'], default='deepseek', help='The LLM API to use for summarization.')
-    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
-                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
-    parser.add_argument('--num-local-workers', type=int, default=default_workers,
-                        help=f'Number of parallel workers for local LLMs/embedding models. (default: {default_workers})')
-    parser.add_argument('--num-remote-workers', type=int, default=100,
-                        help='Number of parallel workers for remote LLM/embedding APIs. (default: 100)')
     args = parser.parse_args()
 
+    # Resolve paths and convert back to strings
+    args.index_file = str(args.index_file.resolve())
+    args.project_path = str(args.project_path.resolve())
+
     try:
-        llm_client = get_llm_client(args.api)
-        embedding_client = get_embedding_client(args.api) # Using same API choice for now
+        # Use the standardized 'llm_api' argument name
+        llm_client = get_llm_client(args.llm_api)
+        embedding_client = get_embedding_client(args.llm_api)
 
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection(): return 1
             
-            # This single block now handles YAML parsing, parallelization, and caching
             logger.info("Parsing YAML index or loading from cache...")
             symbol_parser = SymbolParser(index_file_path=args.index_file)
             symbol_parser.parse(num_workers=args.num_parse_workers)
@@ -555,14 +555,12 @@ def main():
                 args.num_remote_workers
             )
             
-            # Run all summarization and embedding passes
             generator.summarize_code_graph()
 
-            # Finally, create the vector indices
             neo4j_mgr.create_vector_indices()
 
     except Exception as e:
-        logging.critical(f"A critical error occurred: {e}")
+        logging.critical(f"A critical error occurred: {e}", exc_info=True)
         return 1
 
 if __name__ == "__main__":

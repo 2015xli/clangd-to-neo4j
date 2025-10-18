@@ -14,6 +14,7 @@ import argparse
 import json
 import math
 
+import input_params
 from tree_sitter_span_extractor import SpanExtractor
 from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
@@ -227,29 +228,36 @@ class ClangdCallGraphExtractorWithContainer(BaseClangdCallGraphExtractor):
         logger.info(f"Extracted {len(call_relations)} call relationships")
         return call_relations
 
+import input_params
+from pathlib import Path
+
 def main():
     """Main function to demonstrate usage."""
-    try:
-        default_workers = math.ceil(os.cpu_count() / 2)
-    except (NotImplementedError, TypeError):
-        default_workers = 2
-
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
-    parser.add_argument('input_file', help='Path to clangd index YAML file (or a .pkl cache file).')
-    parser.add_argument('span_path', help='Path to a pre-computed spans YAML file, or a project directory to scan')
-    parser.add_argument('--output', '-o', help='Output JSON file path')
-    parser.add_argument('--stats', action='store_true', help='Show statistics')
-    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--ingest', action='store_true', help='If set, ingest directly into Neo4j.')
-    parser.add_argument('--ingest-batch-size', type=int, default=1000, help='Batch size for ingesting call relations (default: 1000).')
-    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
-                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
+    
+    # Add argument groups from the centralized module
+    input_params.add_worker_args(parser)
+    input_params.add_batching_args(parser)
+    input_params.add_logistic_args(parser)
+
+    # Add arguments specific to this script
+    parser.add_argument('index_file', type=Path, help='Path to clangd index YAML file (or a .pkl cache file).')
+    parser.add_argument('span_path', type=Path, help='Path to a project directory to scan for function spans.')
+
     args = parser.parse_args()
+
+    # Resolve paths and convert back to strings
+    args.index_file = str(args.index_file.resolve())
+    args.span_path = str(args.span_path.resolve())
+
+    # Set default for ingest_batch_size if not provided
+    if args.ingest_batch_size is None:
+        args.ingest_batch_size = 1000 # A sensible default for this script
     
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
     symbol_parser = SymbolParser(
-        index_file_path=args.input_file,
+        index_file_path=args.index_file,
         log_batch_size=args.log_batch_size
     )
     symbol_parser.parse(num_workers=args.num_parse_workers)
@@ -279,6 +287,8 @@ def main():
             if neo4j_mgr.check_connection():
                 extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
     else:
+        # When not ingesting, write to a default CQL file.
+        # The ingest_call_relations method handles this logic.
         extractor.ingest_call_relations(call_relations, neo4j_manager=None)
     
     # 5. Generate statistics

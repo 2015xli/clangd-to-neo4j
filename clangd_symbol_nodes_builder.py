@@ -14,6 +14,7 @@ from collections import defaultdict
 import logging
 import gc
 
+import input_params
 # New imports from the common parser module
 from clangd_index_yaml_parser import SymbolParser, Symbol, Location
 from neo4j_manager import Neo4jManager
@@ -560,31 +561,33 @@ class PathProcessor:
         logger.info(f"  Total FILE nodes created: {total_nodes_created}, properties set: {total_properties_set}")
         logger.info(f"  Total CONTAINS relationships created for FILEs: {total_rels_created}")
 
+import input_params
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
 
-    try:
-        default_workers = math.ceil(os.cpu_count() / 2)
-    except (NotImplementedError, TypeError):
-        default_workers = 1
-
     parser = argparse.ArgumentParser(description='Import Clangd index symbols and file structure into Neo4j.')
-    parser.add_argument('index_file', help='Path to the clangd index YAML file (or a .pkl cache file).')
-    parser.add_argument('project_path', help='Root path of the project')
-    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--cypher-tx-size', type=int, default=2000, help='Target relationships per server-side transaction (default: 2000).')
-    parser.add_argument('--ingest-batch-size', type=int, default=None, 
-                        help='Target relationships per client submission. Default: (cypher-tx-size * num-parse-workers). Controls progress indicator and parallelism.')
-    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
-                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
-    parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-create',
-                        help='Strategy for ingesting DEFINES relationships. (default: parallel-create)')
+
+    # Add argument groups from the centralized module
+    input_params.add_core_input_args(parser)
+    input_params.add_worker_args(parser)
+    input_params.add_batching_args(parser)
+    input_params.add_ingestion_strategy_args(parser)
+
     args = parser.parse_args()
     
+    # Resolve paths and convert back to strings
+    args.index_file = str(args.index_file.resolve())
+    args.project_path = str(args.project_path.resolve())
+
     # Set default for ingest_batch_size if not provided
     if args.ingest_batch_size is None:
-        args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
+        try:
+            default_workers = math.ceil(os.cpu_count() / 2)
+        except (NotImplementedError, TypeError):
+            default_workers = 2
+        args.ingest_batch_size = args.cypher_tx_size * (args.num_parse_workers or default_workers)
 
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
@@ -601,7 +604,7 @@ def main():
     with Neo4jManager() as neo4j_mgr:
         if not neo4j_mgr.check_connection(): return 1
         neo4j_mgr.reset_database()
-        neo4j_mgr.create_project_node(path_manager.project_path)
+        neo4j_mgr.update_project_node(path_manager.project_path, {})
         neo4j_mgr.create_constraints()
         
         logger.info("\n--- Starting Phase 1: Ingesting File & Folder Structure ---")

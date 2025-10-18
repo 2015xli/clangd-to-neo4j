@@ -11,6 +11,7 @@ from pathlib import Path
 import gc
 from typing import Optional, List, Dict, Set, Tuple
 
+import input_params
 from git_manager import GitManager
 from git.exc import InvalidGitRepositoryError
 from neo4j_manager import Neo4jManager
@@ -314,50 +315,40 @@ class GraphUpdater:
         )
         return self.function_span_provider
         
+import input_params
+
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    try:
-        default_workers = math.ceil(os.cpu_count() / 2)
-    except (NotImplementedError, TypeError):
-        default_workers = 1
-
     parser = argparse.ArgumentParser(description='Incrementally update the code graph based on Git commits.')
-    parser.add_argument('index_file', help='Path to the NEW clangd index YAML file for the target commit')
-    parser.add_argument('project_path', help='Root path of the project being indexed')
-    parser.add_argument('--old-commit', default=None, help='The old commit hash or reference. Defaults to graph commit_hash')
-    parser.add_argument('--new-commit', default=None, help='The new commit hash or reference. Defaults to repo HEAD')
-    parser.add_argument('--num-parse-workers', type=int, default=default_workers,
-                        help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
-    
-    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
-    parser.add_argument('--cypher-tx-size', type=int, default=2000,
-                        help='Target items (nodes/relationships) per server-side transaction (default: 2000).')
-    parser.add_argument('--ingest-batch-size', type=int, default=None,
-                        help='Target items per client submission. Default: (cypher-tx-size * num-parse-workers).')
-    parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-merge',
-                        help='Strategy for ingesting DEFINES relationships. (default: parallel-merge for safety)')
 
-    # RAG generation arguments
-    rag_group = parser.add_argument_group('RAG Generation (Optional)')
-    rag_group.add_argument('--generate-summary', action='store_true',
-                        help='Generate AI summaries and embeddings for the code graph.')
-    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama', 'fake'], default='deepseek',
-                        help='The LLM API to use for summarization.')
-    rag_group.add_argument('--num-local-workers', type=int, default=4, # A sensible default
-                        help='Number of parallel workers for local LLMs/embedding models. (default: 4)')
-    rag_group.add_argument('--num-remote-workers', type=int, default=100,
-                        help='Number of parallel workers for remote LLM/embedding APIs. (default: 100)')
+    # Add argument groups from the centralized module
+    input_params.add_core_input_args(parser)
+    input_params.add_git_update_args(parser)
+    input_params.add_worker_args(parser)
+    input_params.add_batching_args(parser)
+    input_params.add_rag_args(parser)
+    input_params.add_ingestion_strategy_args(parser)
+    # Set a different default for defines_generation for safety in updates
+    parser.set_defaults(defines_generation='parallel-merge')
 
     args = parser.parse_args()
 
+    # Resolve paths and convert back to strings
+    args.index_file = str(args.index_file.resolve())
+    args.project_path = str(args.project_path.resolve())
+
     # Set default for ingest_batch_size if not provided
     if args.ingest_batch_size is None:
-        args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
+        try:
+            default_workers = math.ceil(os.cpu_count() / 2)
+        except (NotImplementedError, TypeError):
+            default_workers = 2
+        args.ingest_batch_size = args.cypher_tx_size * (args.num_parse_workers or default_workers)
 
     updater = GraphUpdater(
-        project_path=str(Path(args.project_path).resolve()),
-        index_file=str(Path(args.index_file).resolve()),
+        project_path=args.project_path,
+        index_file=args.index_file,
         old_commit=args.old_commit,
         new_commit=args.new_commit,
         num_parse_workers=args.num_parse_workers,
