@@ -13,18 +13,18 @@
             "args": ["../wsl2-graph-built-clang20.1.8/linux-clangd.yaml", "~/Public/microsoft-WSL2-Linux-Kernel-427645e/"]
         },
         {
-            "name": "Python Debugger: Code graph builder",
+            "name": "Python Debugger: Graph RAG builder",
             "type": "debugpy",
             "request": "launch",
-            "program": "clangd_code_graph_builder.py",
-            "args": ["example/example-clangd-index-without-container.yaml", "example/project", "--ingest-batch-size", "10", "--log-batch-size", "10"]
+            "program": "clangd_graph_rag_builder.py",
+            "args": ["../../mini-jvm/graphrag/original/korp_clangd_21.x.yaml", "../../mini-jvm", "--generate-summary", "--llm-api", "fake", "--ingest-batch-size", "10", "--log-batch-size", "10"]
         },
         {
-            "name": "Python Debugger: graph rag updater",
+            "name": "Python Debugger: Graph RAG updater",
             "type": "debugpy",
             "request": "launch",
             "program": "clangd_graph_rag_updater.py",
-            "args": ["../../mini-jvm/korp_clangd_21.x.yaml", "../../mini-jvm/", "--generate-summary"]
+            "args": ["../../mini-jvm/graphrag/update/korp_clangd_21.x.yaml", "../../mini-jvm", "--generate-summary", "--llm-api", "fake", "--ingest-batch-size", "10", "--log-batch-size", "10"]
         }
         
     ]

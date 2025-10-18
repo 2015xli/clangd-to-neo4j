@@ -27,12 +27,17 @@ class GraphUpdater:
     """Manages the incremental update process."""
 
     def __init__(self, project_path: str, index_file: str, old_commit: str, new_commit: str, num_parse_workers: int,
+                 log_batch_size: int, ingest_batch_size: int, cypher_tx_size: int, defines_generation: str,
                  generate_summary: bool, llm_api: str, num_local_workers: int, num_remote_workers: int):
         self.project_path = project_path
         self.index_file = index_file
         self.old_commit = old_commit
         self.new_commit = new_commit
         self.num_parse_workers = num_parse_workers
+        self.log_batch_size = log_batch_size
+        self.ingest_batch_size = ingest_batch_size
+        self.cypher_tx_size = cypher_tx_size
+        self.defines_generation = defines_generation
         self.neo4j_manager = None
         self.generate_summary = generate_summary
         self.llm_api = llm_api
@@ -40,6 +45,7 @@ class GraphUpdater:
         self.num_remote_workers = num_remote_workers
         self.changed_files: Dict[str, List[str]] = {} # To be populated in run_update
         self.seed_symbol_ids: Set[str] = set() # To be populated in _build_mini_index
+        self.function_span_provider: Optional[FunctionSpanProvider] = None # To be populated in _build_mini_index
 
         logger.info(f"Initializing graph update for project: {project_path}")
         try:
@@ -149,7 +155,10 @@ class GraphUpdater:
         
         # Step 1: Parse the Full New Index
         logger.info(f"Parsing new clangd index file: {self.index_file}")
-        full_symbol_parser = SymbolParser(index_file_path=self.index_file)
+        full_symbol_parser = SymbolParser(
+            index_file_path=self.index_file,
+            log_batch_size=self.log_batch_size
+        )
         full_symbol_parser.parse(num_workers=self.num_parse_workers) # Assuming default workers for now
 
         # Step 2: Identify Seed Symbols
@@ -195,6 +204,10 @@ class GraphUpdater:
         logger.info("Creating the mini-index from the full symbol table...")
         mini_index_parser = full_symbol_parser.create_subset(final_symbol_ids)
         
+        # The deletion is actually unnecessary because full_symbol_parser is local variable. But we just want to force gc to reclaim it.
+        del full_symbol_parser
+        gc.collect()
+
         logger.info("Phase 3 complete.")
         return mini_index_parser
 
@@ -205,17 +218,11 @@ class GraphUpdater:
             logger.info("Mini-index is empty. Nothing to ingest. Skipping Phase 4.")
             return
 
-        # The ingestion components need various arguments, let's define them
-        # These could be exposed as CLI args for the updater script in the future
-        log_batch_size = 1000
-        ingest_batch_size = 2000
-        cypher_tx_size = 1000
-
         path_manager = PathManager(self.project_path)
 
         # Step 4a: Rebuild File Structure
         logger.info("Step 4a: Rebuilding file structure...")
-        path_processor = PathProcessor(path_manager, self.neo4j_manager, log_batch_size, ingest_batch_size)
+        path_processor = PathProcessor(path_manager, self.neo4j_manager, self.log_batch_size, self.ingest_batch_size)
         path_processor.ingest_paths(mini_index_parser.symbols)
         del path_processor
 
@@ -223,30 +230,24 @@ class GraphUpdater:
         logger.info("Step 4b: Rebuilding symbols and DEFINES relationships...")
         symbol_processor = SymbolProcessor(
             path_manager,
-            log_batch_size=log_batch_size,
-            ingest_batch_size=ingest_batch_size,
-            cypher_tx_size=cypher_tx_size
+            log_batch_size=self.log_batch_size,
+            ingest_batch_size=self.ingest_batch_size,
+            cypher_tx_size=self.cypher_tx_size
         )
-        # Use 'parallel-merge' for idempotent relationship creation
-        symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_manager, 'parallel-merge')
+        # Use the configured defines generation strategy (e.g., 'parallel-merge' for safety)
+        symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_manager, self.defines_generation)
         del symbol_processor
 
         # Step 4c: Rebuild Call Graph
         logger.info("Step 4c: Rebuilding call graph...")
         if mini_index_parser.has_container_field:
-            extractor = ClangdCallGraphExtractorWithContainer(mini_index_parser, log_batch_size, ingest_batch_size)
+            extractor = ClangdCallGraphExtractorWithContainer(mini_index_parser, self.log_batch_size, self.ingest_batch_size)
             logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
         else:
             logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-            files_for_span_provider = (
-                changed_files.get('added', []) + 
-                changed_files.get('modified', []) + 
-                [p['new'] for p in changed_files.get('renamed', [])]
-            )
-            # The provider needs a list of absolute file paths
-            abs_file_list = [os.path.abspath(os.path.join(self.project_path, f)) for f in files_for_span_provider]
-            span_provider = FunctionSpanProvider(symbol_parser=mini_index_parser, paths=abs_file_list)
-            extractor = ClangdCallGraphExtractorWithoutContainer(mini_index_parser, log_batch_size, ingest_batch_size, function_span_provider=span_provider)
+            # Spans are needed for the old format. Get spans for added/modified files.
+            self._get_function_span_provider(mini_index_parser)
+            extractor = ClangdCallGraphExtractorWithoutContainer(mini_index_parser, self.log_batch_size, self.ingest_batch_size)
 
         call_relations = extractor.extract_call_relationships()
         extractor.ingest_call_relations(call_relations, neo4j_manager=self.neo4j_manager)
@@ -255,7 +256,7 @@ class GraphUpdater:
         gc.collect()
         logger.info("Phase 4 complete.")
 
-    def _update_summaries(self, mini_index_parser, changed_files): 
+    def _update_summaries(self, mini_index_parser, changed_files):
         """Phase 5: Updates AI-generated summaries and embeddings."""
         logger.info("\n--- Phase 5: Updating RAG Summaries and Embeddings ---")
         if not self.generate_summary:
@@ -270,21 +271,16 @@ class GraphUpdater:
         llm_client = get_llm_client(self.llm_api)
         embedding_client = get_embedding_client(self.llm_api)
 
-        # Instantiate FunctionSpanProvider
-        # The paths argument should be the project_path, as FunctionSpanProvider will read files from there.
-        # Store the list of files that exist in the new commit for the span provider
-        files_for_span_provider = (
-            changed_files.get('added', []) + 
-            changed_files.get('modified', []) + 
-            [p['new'] for p in changed_files.get('renamed', [])]
-        )
-        abs_file_list = [os.path.abspath(os.path.join(self.project_path, f)) for f in files_for_span_provider]
-        span_provider = FunctionSpanProvider(symbol_parser=mini_index_parser, paths=abs_file_list)
+        if self.function_span_provider is None:
+            self.function_span_provider = self._get_function_span_provider(mini_index_parser)
+            # Once the span provider is created, the mini-index is no longer needed for RAG generation
+            del mini_index_parser
+            gc.collect()
 
         rag_generator = RagGenerator(
             neo4j_mgr=self.neo4j_manager,
             project_path=self.project_path,
-            span_provider=span_provider,
+            span_provider=self.function_span_provider,
             llm_client=llm_client,
             embedding_client=embedding_client,
             num_local_workers=self.num_local_workers,
@@ -294,14 +290,30 @@ class GraphUpdater:
         if not self.seed_symbol_ids:
             logger.info("No seed symbols found for RAG update. Skipping targeted update.")
             return
-        
+
         logger.info(f"Using {len(self.seed_symbol_ids)} seed symbols for RAG update.")
 
         rag_generator.summarize_targeted_update(self.seed_symbol_ids, self.changed_files)
 
         logger.info("Phase 5 complete.")
 
-
+    def _get_function_span_provider(self, mini_index_parser: SymbolParser):
+        if self.function_span_provider:
+            return self.function_span_provider
+        # Get the list of files that exist in the new commit for the span provider.
+        files_for_span_provider = (
+            self.changed_files.get('added', []) +
+            self.changed_files.get('modified', []) +
+            [p['new'] for p in self.changed_files.get('renamed', [])]
+        )
+        abs_file_list = [os.path.abspath(os.path.join(self.project_path, f)) for f in files_for_span_provider]
+        self.function_span_provider = FunctionSpanProvider(
+            symbol_parser=mini_index_parser,
+            paths=abs_file_list,
+            log_batch_size=self.log_batch_size
+        )
+        return self.function_span_provider
+        
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -317,12 +329,20 @@ def main():
     parser.add_argument('--new-commit', default=None, help='The new commit hash or reference. Defaults to repo HEAD')
     parser.add_argument('--num-parse-workers', type=int, default=default_workers,
                         help=f'Number of parallel workers for parsing. Set to 1 for single-threaded mode. (default: {default_workers})')
+    
+    parser.add_argument('--log-batch-size', type=int, default=1000, help='Log progress every N items (default: 1000)')
+    parser.add_argument('--cypher-tx-size', type=int, default=2000,
+                        help='Target items (nodes/relationships) per server-side transaction (default: 2000).')
+    parser.add_argument('--ingest-batch-size', type=int, default=None,
+                        help='Target items per client submission. Default: (cypher-tx-size * num-parse-workers).')
+    parser.add_argument('--defines-generation', choices=['unwind-create', 'parallel-merge', 'parallel-create'], default='parallel-merge',
+                        help='Strategy for ingesting DEFINES relationships. (default: parallel-merge for safety)')
 
     # RAG generation arguments
     rag_group = parser.add_argument_group('RAG Generation (Optional)')
     rag_group.add_argument('--generate-summary', action='store_true',
                         help='Generate AI summaries and embeddings for the code graph.')
-    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama'], default='deepseek',
+    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama', 'fake'], default='deepseek',
                         help='The LLM API to use for summarization.')
     rag_group.add_argument('--num-local-workers', type=int, default=4, # A sensible default
                         help='Number of parallel workers for local LLMs/embedding models. (default: 4)')
@@ -331,12 +351,20 @@ def main():
 
     args = parser.parse_args()
 
+    # Set default for ingest_batch_size if not provided
+    if args.ingest_batch_size is None:
+        args.ingest_batch_size = args.cypher_tx_size * args.num_parse_workers
+
     updater = GraphUpdater(
         project_path=str(Path(args.project_path).resolve()),
-        index_file=args.index_file,
+        index_file=str(Path(args.index_file).resolve()),
         old_commit=args.old_commit,
         new_commit=args.new_commit,
         num_parse_workers=args.num_parse_workers,
+        log_batch_size=args.log_batch_size,
+        ingest_batch_size=args.ingest_batch_size,
+        cypher_tx_size=args.cypher_tx_size,
+        defines_generation=args.defines_generation,
         generate_summary=args.generate_summary,
         llm_api=args.llm_api,
         num_local_workers=args.num_local_workers,

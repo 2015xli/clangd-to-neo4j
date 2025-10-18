@@ -70,7 +70,11 @@ class RagGenerator:
         """Main orchestrator method to run all summarization passes for a full build."""
         self.summarize_functions_individually()
         self.summarize_functions_with_context()
-        self.summarize_files_and_folders()
+        logging.info("--- Starting File and Folder Summarization ---")
+        self._summarize_all_files()
+        self._summarize_all_folders()
+        self._summarize_project()
+        logging.info("--- Finished File and Folder Summarization ---")
         self.generate_embeddings()
 
     def summarize_targeted_update(self, seed_symbol_ids: set, structurally_changed_files: dict):
@@ -309,15 +313,7 @@ class RagGenerator:
             f"Describe it in one concise sentence."
         )
 
-    # --- Pass 3 & 4 Methods ---
-    def summarize_files_and_folders(self):
-        """Generates summaries for all files and folders via roll-up."""
-        logging.info("\n--- Starting File and Folder Summarization ---")
-        self._summarize_all_files()
-        self._summarize_all_folders()
-        self._summarize_project()
-        logging.info("--- Finished File and Folder Summarization ---")
-
+    # --- Pass 3 Methods ---
     def _summarize_all_files(self):
         logging.info("\n--- Starting Pass 3: Summarizing All Files ---")
         # Query for all files, not just ones with summary is null, to ensure correctness on re-runs
@@ -359,6 +355,7 @@ class RagGenerator:
         update_query = "MATCH (f:FILE {path: $path}) SET f.summary = $summary REMOVE f.summaryEmbedding"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"path": file_path, "summary": summary})
 
+    # --- Pass 4 Methods ---
     def _summarize_all_folders(self):
         logging.info("\n--- Starting Pass 4: Summarizing All Folders (bottom-up) ---")
         folders_to_process = self.neo4j_mgr.execute_read_query("MATCH (f:FOLDER) RETURN f.path AS path")

@@ -107,6 +107,10 @@ class FunctionSpanProvider:
                 
                 if key in spans_lookup:
                     # Enrich the Symbol object directly
+                    # We don't need extra data structure to pass the body location to the call graph extractor
+                    # The call graph extractor will use the body location to extract the function body
+                    # But for RAG generation, we use the _body_spans_by_id map to pass the body location to the RAG generator
+                    # It is actually unnecessary to have the extra map data structure, but for convienience.
                     func_symbol.body_location = spans_lookup[key].body_location
                     
                     # Also build the map for direct lookup
@@ -124,6 +128,9 @@ class FunctionSpanProvider:
         logger.info(f"Matched {matched_count} functions with body spans out of {len(self.symbol_parser.functions)} total functions.")
 
         # Clean up intermediate data
+        # We don't need the symbol parser anymore, since we keep a dedicated data structure for the function spans in _body_spans_by_id.
+        # More importantly, if the program decides to delete the symbol parser, it will not be retained by this reference.
+        self.symbol_parser = None
         del self.function_spans_by_file, spans_lookup
         gc.collect()
 

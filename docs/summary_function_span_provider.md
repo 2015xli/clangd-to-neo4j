@@ -33,3 +33,17 @@ This is the most critical step, where the abstract symbols from `clangd` are lin
 
 *   **Mechanism**: Once a match is found, the `FunctionSpanProvider` takes the `body_location` (the start and end coordinates of the function's body) from the `tree-sitter` `FunctionSpan` and attaches it as a new attribute directly onto the in-memory `clangd` `Symbol` object.
 *   **Output**: The process does not return a new object. Instead, it modifies the `SymbolParser` instance it was given in-place. After the provider has run, the `Symbol` objects within the parser are now enriched with the precise location of their code, ready for the next stage of the pipeline.
+
+## 3. Design Rationale: Decoupling and Memory Optimization
+
+An important design aspect of the `FunctionSpanProvider` is its dual role as both an enricher and a self-contained cache.
+
+1.  **In-Place Enrichment**: As described above, it modifies the `Symbol` objects directly within the shared `SymbolParser` instance. This allows components that have access to the `SymbolParser`, like the `ClangdCallGraphExtractorWithoutContainer`, to immediately use the `body_location` data without needing a reference to the provider itself.
+
+2.  **Internal Caching**: The provider also stores the `id -> body_span` mapping in its own lean, internal dictionary. This is used by its public `get_body_span()` method.
+
+This seemingly redundant internal cache serves a crucial purpose: **decoupling for memory optimization**.
+
+*   **The Challenge**: The `SymbolParser` object can be very large, consuming significant memory. The RAG (summary generation) process is also memory-intensive.
+*   **The Solution**: The `FunctionSpanProvider` acts as an adapter. It is created while the large `SymbolParser` is in memory, and it extracts and caches only the essential body span information. Crucially, at the end of its matching process, it sets its internal reference to the `SymbolParser` to `None`.
+*   **The Benefit**: This design allows the main application to delete the large `SymbolParser` object *after* the `FunctionSpanProvider` has been created but *before* the `RagGenerator` is initialized. Because the provider no longer holds a reference to the parser, the Python garbage collector can successfully reclaim the memory. This makes the subsequent memory-intensive RAG pass more stable and efficient. The `RagGenerator` can then operate with just the lean `FunctionSpanProvider` without needing any knowledge of the original `SymbolParser`.

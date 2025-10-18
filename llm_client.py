@@ -90,6 +90,15 @@ class OllamaClient(LlmClient):
             logger.error(f"Ollama API request failed: {e}")
             return ""
 
+class FakeLlmClient(LlmClient):
+    """A fake client for debugging that returns a static summary."""
+    is_local: bool = True
+
+    def generate_summary(self, prompt: str) -> str:
+        """Returns a hardcoded summary for any prompt."""
+        return "This part implements important functionalities."
+
+
 def get_llm_client(api_name: str) -> LlmClient:
     """Factory function to get an LLM client."""
     api_name = api_name.lower()
@@ -99,8 +108,10 @@ def get_llm_client(api_name: str) -> LlmClient:
         return DeepSeekClient()
     elif api_name == 'ollama':
         return OllamaClient()
+    elif api_name == 'fake':
+        return FakeLlmClient()
     else:
-        raise ValueError(f"Unknown API: {api_name}. Supported APIs are: openai, deepseek, ollama.")
+        raise ValueError(f"Unknown API: {api_name}. Supported APIs are: openai, deepseek, ollama, fake.")
 
 # --- Embedding Clients ---
 # NOTE: The SentenceTransformerClient requires 'sentence-transformers' and 'torch'
