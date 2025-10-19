@@ -234,25 +234,26 @@ from pathlib import Path
 def main():
     """Main function to demonstrate usage."""
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
+
+    # Add arguments specific to this script
+    # 'index_file', type=Path, help='Path to clangd index YAML file (or a .pkl cache file).'
+    # 'project_path', type=Path, help='Path to a project directory to scan for function spans.'
+    input_params.add_core_input_args(parser)
     
     # Add argument groups from the centralized module
     input_params.add_worker_args(parser)
     input_params.add_batching_args(parser)
     input_params.add_logistic_args(parser)
 
-    # Add arguments specific to this script
-    parser.add_argument('index_file', type=Path, help='Path to clangd index YAML file (or a .pkl cache file).')
-    parser.add_argument('span_path', type=Path, help='Path to a project directory to scan for function spans.')
-
     args = parser.parse_args()
 
     # Resolve paths and convert back to strings
     args.index_file = str(args.index_file.resolve())
-    args.span_path = str(args.span_path.resolve())
+    args.project_path = str(args.project_path.resolve())
 
     # Set default for ingest_batch_size if not provided
     if args.ingest_batch_size is None:
-        args.ingest_batch_size = 1000 # A sensible default for this script
+        args.ingest_batch_size = args.cypher_tx_size # A sensible default for this script
     
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
@@ -271,11 +272,11 @@ def main():
         extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
         from function_span_provider import FunctionSpanProvider
-        if os.path.isdir(args.span_path):
+        if os.path.isdir(args.project_path):
             # The provider runs tree-sitter and enriches the symbol_parser object in place.
-            FunctionSpanProvider(symbol_parser=symbol_parser, paths=[args.span_path], log_batch_size=args.log_batch_size)
+            FunctionSpanProvider(symbol_parser=symbol_parser, paths=[args.project_path], log_batch_size=args.log_batch_size)
         else:
-            logger.error(f"Project path for span extraction not found or not a directory: {args.span_path}")
+            logger.error(f"Project path for span extraction not found or not a directory: {args.project_path}")
             return
     
     # 3. Extract call relationships

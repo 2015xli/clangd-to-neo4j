@@ -11,7 +11,7 @@ from pathlib import Path
 def add_core_input_args(parser: argparse.ArgumentParser):
     """Adds core input arguments: index_file and project_path."""
     parser.add_argument('index_file', type=Path, help='Path to the clangd index YAML file (or .pkl cache).')
-    parser.add_argument('project_path', type=Path, help='Root path of the project being indexed.')
+    parser.add_argument('project_path', type=Path, help='Root path of the project being indexed. Or for call graph builder, it is the path to a directory for function span provider to scan.')
 
 def add_worker_args(parser: argparse.ArgumentParser):
     """Adds arguments related to parallel workers."""
