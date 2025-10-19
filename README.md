@@ -50,7 +50,7 @@ The `clangd_graph_rag_builder.py` orchestrates the following passes:
 
 *   **Purpose**: Creates nodes for logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) and their `:DEFINES` relationships to files.
 *   **Key Component**: `SymbolProcessor` class.
-*   **Algorithm**: First, `MERGE`s all `:FUNCTION` and `:DATA_STRUCTURE` nodes in batches. Then, creates `:DEFINES` relationships using a high-performance strategy (e.g., `parallel-create` with `apoc.periodic.iterate`) to avoid database deadlocks.
+*   **Algorithm**: First, `MERGE`s all `:FUNCTION` and `:DATA_STRUCTURE` nodes in batches. Then, creates `:DEFINES` relationships using a high-performance strategy (e.g., `batched-parallel` with `apoc.periodic.iterate`) to avoid database deadlocks.
 
 ### Pass 3: Ingest Call Graph (`clangd_call_graph_builder.py`)
 
@@ -91,7 +91,7 @@ python3 clangd_graph_rag_builder.py <path_to_index.yaml> <path_to_project/> \
 **All Options for `clangd_graph_rag_builder.py`:**
 
 *   `--num-parse-workers <int>`: Number of parallel workers for parsing the YAML index. Defaults to half the CPU cores.
-*   `--defines-generation <strategy>`: Strategy for ingesting `:DEFINES` relationships. Choices: `unwind-create`, `parallel-merge`, `parallel-create`. Default: `parallel-create`.
+*   `--defines-generation <strategy>`: Strategy for ingesting `:DEFINES` relationships. Choices: `unwind-sequential`, `isolated-parallel`, `batched-parallel`. Default: `batched-parallel`.
 *   `--cypher-tx-size <int>`: Target items (nodes/relationships) per server-side transaction. Default: `2000`.
 *   `--ingest-batch-size <int>`: Target items per client-side submission. Controls progress indicator frequency. Defaults to `(cypher-tx-size * num-parse-workers)`.
 *   `--log-batch-size <int>`: Log progress every N items (default: 1000).

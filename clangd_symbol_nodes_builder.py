@@ -115,24 +115,24 @@ class SymbolProcessor:
 
         return function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list
 
-    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, defines_generation_strategy: str = "parallel-create"):
+    def ingest_symbols_and_relationships(self, symbols: Dict[str, Symbol], neo4j_mgr: Neo4jManager, defines_generation_strategy: str = "batched-parallel"):
         function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list = self._process_and_filter_symbols(symbols)
 
         self._ingest_function_nodes(function_data_list, neo4j_mgr)
         self._ingest_data_structure_nodes(data_structure_data_list, neo4j_mgr)
 
-        if defines_generation_strategy == "unwind-create":
-            logger.info("Using direct sequential UNWIND CREATE for DEFINES relationships.")
-            self._ingest_defines_relationships_unwind_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
-        elif defines_generation_strategy == "parallel-merge":
-            logger.info("Using parallel MERGE for DEFINES relationships with file-based grouping.")
-            self._ingest_defines_relationships_merge(defines_function_list, defines_data_structure_list, neo4j_mgr)
-        elif defines_generation_strategy == "parallel-create":
-            logger.info("Using parallel CREATE for DEFINES relationships. This is fast but assumes a clean database.")
-            self._ingest_defines_relationships_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
+        if defines_generation_strategy == "unwind-sequential":
+            logger.info("Using sequential UNWIND MERGE for DEFINES relationships.")
+            self._ingest_defines_relationships_unwind_sequential(defines_function_list, defines_data_structure_list, neo4j_mgr)
+        elif defines_generation_strategy == "isolated-parallel":
+            logger.info("Using isolated parallel MERGE for DEFINES relationships with file-based grouping.")
+            self._ingest_defines_relationships_isolated_parallel(defines_function_list, defines_data_structure_list, neo4j_mgr)
+        elif defines_generation_strategy == "batched-parallel":
+            logger.info("Using batched parallel MERGE for DEFINES relationships.")
+            self._ingest_defines_relationships_batched_parallel(defines_function_list, defines_data_structure_list, neo4j_mgr)
         else:
-            logger.error(f"Unknown defines generation strategy: {defines_generation_strategy}. Defaulting to parallel-create.")
-            self._ingest_defines_relationships_create(defines_function_list, defines_data_structure_list, neo4j_mgr)
+            logger.error(f"Unknown defines generation strategy: {defines_generation_strategy}. Defaulting to batched-parallel.")
+            self._ingest_defines_relationships_batched_parallel(defines_function_list, defines_data_structure_list, neo4j_mgr)
 
         del function_data_list, data_structure_data_list, defines_function_list, defines_data_structure_list
         gc.collect()
@@ -186,7 +186,7 @@ class SymbolProcessor:
         kind_counts = Counter(d.get('kind', 'Unknown') for d in defines_list)
         return ", ".join(f"{kind}: {count}" for kind, count in sorted(kind_counts.items()))
 
-    def _ingest_defines_relationships_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+    def _ingest_defines_relationships_batched_parallel(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
             return
 
@@ -194,7 +194,7 @@ class SymbolProcessor:
             f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
             f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
         )
-        logger.info("Creating relationships in batches using non-idempotent CREATE...")
+        logger.info("Creating relationships using batched parallel MERGE...")
 
         # Ingest FUNCTION DEFINES relationships
         total_rels_created = 0
@@ -206,7 +206,7 @@ class SymbolProcessor:
                 defines_rel_query = """
                 CALL apoc.periodic.iterate(
                     "UNWIND $defines_data AS data RETURN data",
-                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:FUNCTION {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
+                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:FUNCTION {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
                 YIELD updateStatistics
@@ -236,7 +236,7 @@ class SymbolProcessor:
                 defines_rel_query = """
                 CALL apoc.periodic.iterate(
                     "UNWIND $defines_data AS data RETURN data",
-                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:DATA_STRUCTURE {id: data.id}) CREATE (f)-[:DEFINES]->(n)",
+                    "MATCH (f:FILE {path: data.file_path}) MATCH (n:DATA_STRUCTURE {id: data.id}) MERGE (f)-[:DEFINES]->(n)",
                     {batchSize: $cypher_tx_size, parallel: true, params: {defines_data: $defines_data}}
                 )
                 YIELD updateStatistics
@@ -258,7 +258,7 @@ class SymbolProcessor:
 
         logger.info("Finished DEFINES relationship ingestion.")
 
-    def _ingest_defines_relationships_merge(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+    def _ingest_defines_relationships_isolated_parallel(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
             return
 
@@ -276,7 +276,7 @@ class SymbolProcessor:
             for item in defines_function_list:
                 if 'file_path' in item:
                     grouped_by_file_functions[item['file_path']].append(item)
-            self._process_grouped_defines_merge(grouped_by_file_functions, neo4j_mgr, ":FUNCTION")
+            self._process_grouped_defines_isolated_parallel(grouped_by_file_functions, neo4j_mgr, ":FUNCTION")
 
         # Process DATA_STRUCTURE DEFINES relationships
         if defines_data_structure_list:
@@ -285,11 +285,11 @@ class SymbolProcessor:
             for item in defines_data_structure_list:
                 if 'file_path' in item:
                     grouped_by_file_datastructures[item['file_path']].append(item)
-            self._process_grouped_defines_merge(grouped_by_file_datastructures, neo4j_mgr, ":DATA_STRUCTURE")
+            self._process_grouped_defines_isolated_parallel(grouped_by_file_datastructures, neo4j_mgr, ":DATA_STRUCTURE")
 
         logger.info("Finished DEFINES relationship ingestion.")
 
-    def _process_grouped_defines_merge(self, grouped_by_file: Dict[str, List[Dict]], neo4j_mgr: Neo4jManager, node_label_filter: str):
+    def _process_grouped_defines_isolated_parallel(self, grouped_by_file: Dict[str, List[Dict]], neo4j_mgr: Neo4jManager, node_label_filter: str):
         list_of_groups = list(grouped_by_file.values())
         if not list_of_groups:
             return
@@ -336,7 +336,7 @@ class SymbolProcessor:
         print(flush=True)
         logger.info(f"  Total DEFINES {node_label_filter} relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
-    def _ingest_defines_relationships_unwind_create(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
+    def _ingest_defines_relationships_unwind_sequential(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not defines_function_list and not defines_data_structure_list:
             return
 
@@ -344,7 +344,7 @@ class SymbolProcessor:
             f"Found {len(defines_function_list) + len(defines_data_structure_list)} potential DEFINES relationships. "
             f"Breakdown by kind: {self._get_defines_stats(defines_function_list + defines_data_structure_list)}"
         )
-        logger.info("Creating relationships in batches using direct UNWIND CREATE (sequential)...")
+        logger.info("Creating relationships in batches using sequential UNWIND MERGE...")
 
         # Ingest FUNCTION DEFINES relationships
         total_rels_created_func = 0
@@ -356,7 +356,7 @@ class SymbolProcessor:
                 UNWIND $defines_data AS data
                 MATCH (f:FILE {path: data.file_path})
                 MATCH (n:FUNCTION {id: data.id})
-                CREATE (f)-[:DEFINES]->(n)
+                MERGE (f)-[:DEFINES]->(n)
                 """
                 counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,
@@ -377,7 +377,7 @@ class SymbolProcessor:
                 UNWIND $defines_data AS data
                 MATCH (f:FILE {path: data.file_path})
                 MATCH (n:DATA_STRUCTURE {id: data.id})
-                CREATE (f)-[:DEFINES]->(n)
+                MERGE (f)-[:DEFINES]->(n)
                 """
                 counters = neo4j_mgr.execute_autocommit_query(
                     defines_rel_query,

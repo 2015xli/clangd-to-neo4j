@@ -11,7 +11,7 @@ It operates on the in-memory collection of `Symbol` objects provided by the `cla
 The script can be run directly to perform a partial ingestion of file structure and symbol definitions, which is useful for debugging.
 
 ```bash
-# Example: Ingest symbols using the default parallel-create strategy
+# Example: Ingest symbols using the default batched-parallel strategy
 python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/
 ```
 
@@ -19,7 +19,7 @@ python3 clangd_symbol_nodes_builder.py /path/to/index.yaml /path/to/project/
 
 *   `index_file`: Path to the clangd index YAML file (or a `.pkl` cache file).
 *   `project_path`: Root path of the project.
-*   `--defines-generation`: Strategy for ingesting `:DEFINES` relationships (`unwind-create`, `parallel-merge`, `parallel-create`). Default: `parallel-create`.
+*   `--defines-generation`: Strategy for ingesting `:DEFINES` relationships (`unwind-sequential`, `isolated-parallel`, `batched-parallel`). Default: `batched-parallel`.
 *   ... and other performance tuning arguments (`--num-parse-workers`, `--cypher-tx-size`, etc.).
 
 ---
@@ -50,13 +50,14 @@ Creating the `:DEFINES` relationships (linking a file to the symbols it defines)
 
 Three strategies are available via the `--defines-generation` flag:
 
-1.  **`parallel-create` (Default)**
-    *   **Algorithm**: Uses `apoc.periodic.iterate` with a `CREATE` clause. This is the fastest method.
-    *   **Subtlety**: This strategy is **not idempotent**. It assumes it is writing to a clean database and will create duplicate relationships if run again. It is the default because the main build pipeline always starts with a fresh database, making this a safe and optimal choice for the primary use case.
+1.  **`batched-parallel` (Default)**
+    *   **Algorithm**: Uses `apoc.periodic.iterate` with a `MERGE` clause. This is a fast, idempotent strategy suitable for clean database builds.
+    *   **Subtlety**: This strategy is fully **idempotent**. It parallelizes `MERGE` operations across the entire dataset without the file-based grouping used by `isolated-parallel`. While fast, this carries a theoretical risk of deadlocks if multiple threads attempt to write to the same file node simultaneously, though this is rare in a clean build. It remains the default for its high performance.
 
-2.  **`parallel-merge` (Idempotent & Deadlock-Safe)**
+2.  **`isolated-parallel` (Idempotent & Deadlock-Safe)**
     *   **Algorithm**: Uses `apoc.periodic.iterate` with a `MERGE` clause. This is the safest option for running on a partially-existing graph.
     *   **Deadlock Avoidance Subtlety**: A simple parallel `MERGE` can cause deadlocks when multiple threads try to lock the same `:FILE` node simultaneously. This strategy avoids this by first grouping all `:DEFINES` relationships by their target `:FILE` node on the client side. It then passes these *groups* to `apoc.periodic.iterate`. The APOC procedure processes the groups in parallel, but since all relationships for a given file are in a single group, no two threads will ever compete for a lock on the same file node, completely eliminating the cause of deadlocks.
 
-3.  **`unwind-create`**
-    *   **Algorithm**: A simpler, sequential strategy that uses client-side batching with `UNWIND` and `CREATE`. It does not use the APOC library. While now much faster due to the `MATCH` clause optimization, it is empirically slower than the parallel APOC-based methods for very large datasets.
+3.  **`unwind-sequential`**
+    *   **Algorithm**: A simple, idempotent, and sequential strategy that uses client-side batching with `UNWIND` and `MERGE`. It does not use the APOC library.
+    *   **Use Case**: While the parallel methods are typically faster for very large, clean builds, this method is extremely safe, easy to debug, and does not require the APOC library, making it a reliable fallback.

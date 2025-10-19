@@ -7,7 +7,6 @@ import argparse
 import sys, math
 import logging
 import os
-from pathlib import Path
 import gc
 from typing import Optional, List, Dict, Set, Tuple
 
@@ -235,7 +234,7 @@ class GraphUpdater:
             ingest_batch_size=self.ingest_batch_size,
             cypher_tx_size=self.cypher_tx_size
         )
-        # Use the configured defines generation strategy (e.g., 'parallel-merge' for safety)
+        # Use the configured defines generation strategy 
         symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_manager, self.defines_generation)
         del symbol_processor
 
@@ -330,7 +329,7 @@ def main():
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
     # Set a different default for defines_generation for safety in updates
-    parser.set_defaults(defines_generation='parallel-merge')
+    parser.set_defaults(defines_generation='isolated-parallel')
 
     args = parser.parse_args()
 
