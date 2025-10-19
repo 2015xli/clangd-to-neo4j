@@ -25,6 +25,85 @@ In this document, we give a deep dive into the design and architecture of the `c
 *   **Reference Data**: Crucially, it also indexes every single place a symbol is referenced or used in the code.
 *   **My Goal**: To transform this raw, compiler-centric data into a connected knowledge graph that an AI can understand and reason about.
 
+#### Specification for Symbol
+```
+--- !Symbol
+ID:              BAA4D7A9E4AEF0DA
+Name:            free_java_object
+Scope:           ''
+SymInfo:
+  Kind:            Function
+  Lang:            C
+CanonicalDeclaration:
+  FileURI:         'file:///home/xli/NAS/home/bin/mini-jvm/include/gc_for_vm.h'
+  Start:
+    Line:            17
+    Column:          5
+  End:
+    Line:            17
+    Column:          21
+Definition:
+  FileURI:         'file:///home/xli/NAS/home/bin/mini-jvm/gc/object_create.c'
+  Start:
+    Line:            61
+    Column:          5
+  End:
+    Line:            61
+    Column:          21
+Flags:           9
+Signature:       '(korp_object *)'
+TemplateSpecializationArgs: ''
+CompletionSnippetSuffix: '(${1:korp_object *})'
+Documentation:   ''
+ReturnType:      void
+Type:            'c:v'
+IncludeHeaders:
+  - Header:          'file:///home/xli/NAS/home/bin/mini-jvm/include/gc_for_vm.h'
+    References:      2
+...
+```
+#### Specification for Refs
+```
+--- !Refs
+ID:              BAA4D7A9E4AEF0DA
+References:
+  - Kind:            26
+    Location:
+      FileURI:         'file:///home/xli/NAS/home/bin/mini-jvm/gc/object_create.c'
+      Start:
+        Line:            61
+        Column:          5
+      End:
+        Line:            61
+        Column:          21
+    Container:
+      ID:              '0000000000000000'
+  - Kind:            25
+    Location:
+      FileURI:         'file:///home/xli/NAS/home/bin/mini-jvm/include/gc_for_vm.h'
+      Start:
+        Line:            17
+        Column:          5
+      End:
+        Line:            17
+        Column:          21
+    Container:
+      ID:              '0000000000000000'
+  - Kind:            28
+    Location:
+      FileURI:         'file:///home/xli/NAS/home/bin/mini-jvm/natives/java_lang.c'
+      Start:
+        Line:            132
+        Column:          8
+      End:
+        Line:            132
+        Column:          24
+    Container:
+      ID:              D5AF2A8844BD6186
+...
+
+```
+
 ### 3: Building the Call Graph: The "Easy Way" (Clangd v21+)
 
 *   **The Key Enabler: The `Container` Field**
@@ -70,6 +149,33 @@ In this document, we give a deep dive into the design and architecture of the `c
     *   **Old versions**: A call was `Kind: 4, 12`.
     *   **New versions**: A call is `Kind: 20, 28`.
 *   **Our Solution**: The call graph builder adaptively checks which kinds to look for based on metadata it infers from the index file itself, making the pipeline resilient to this version change.
+
+#### Specification for RefKind
+```
+------------- In clangd-indexer 21.x ----------------
+// clang-tools-extra/clangd/index/Ref.h
+enum class RefKind : uint8_t {
+  Unknown = 0,
+  Declaration = 1 << 0, // 1
+  Definition = 1 << 1,  // 2
+  Reference = 1 << 2,   // 4
+  Spelled = 1 << 3,     // 8  means the reference symbol is literally spelled name, not via Macro name
+  Call = 1 << 4,        // 16 means this is function reference.
+  All = Declaration | Definition | Reference | Spelled,
+};
+
+-------------- In clangd-indexer 16.x ----------------
+// clang-tools-extra/clangd/index/Ref.h
+enum class RefKind : uint8_t {
+  Unknown = 0,
+  Declaration = 1 << 0, // 1
+  Definition = 1 << 1,  // 2
+  Reference = 1 << 2,   // 4
+  Spelled = 1 << 3,     // 8  means it is not a MACRO defined name, but literally spelled
+  All = Declaration | Definition | Reference | Spelled,
+};
+
+```
 
 ---
 
