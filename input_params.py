@@ -40,8 +40,8 @@ def add_rag_args(parser: argparse.ArgumentParser):
     rag_group = parser.add_argument_group('RAG Generation (Optional)')
     rag_group.add_argument('--generate-summary', action='store_true',
                         help='Generate AI summaries and embeddings for the code graph.')
-    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama', 'fake'], default='deepseek',
-                        help='The LLM API to use for summarization.')
+    rag_group.add_argument('--llm-api', choices=['openai', 'deepseek', 'ollama', 'fake'], default='fake',
+                        help='The LLM API to use for summarization. (default fake)')
 
 def add_ingestion_strategy_args(parser: argparse.ArgumentParser):
     """Adds arguments that control ingestion strategy."""

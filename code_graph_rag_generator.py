@@ -203,7 +203,7 @@ class RagGenerator:
     def _get_functions_for_code_summary(self, function_ids: list[str]) -> list[dict]:
         query = """
         MATCH (n:FUNCTION)
-        WHERE n.id IN $function_ids AND n.codeSummary IS NULL
+        WHERE n.id IN $function_ids AND n.codeSummary IS NULL AND n.has_definition
         RETURN n.id AS id, n.path AS path, n.location as location
         """
         return self.neo4j_mgr.execute_read_query(query, {"function_ids": function_ids})
@@ -218,7 +218,8 @@ class RagGenerator:
         if not body_span: return None
         source_code = self._get_source_code_from_span(body_span)
         if not source_code: return None
-        
+        logger.info(f"Summarize function {source_code}...")
+
         prompt = f"Summarize the purpose of this C function based on its code:\n\n```c\n{source_code}```"
         summary = self.llm_client.generate_summary(prompt)
         if not summary: return None
