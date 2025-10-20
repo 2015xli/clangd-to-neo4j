@@ -286,6 +286,8 @@ def main():
     if args.ingest:
         with Neo4jManager() as neo4j_mgr:
             if neo4j_mgr.check_connection():
+                if not neo4j_mgr.verify_project_path(args.project_path):
+                    return
                 extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
     else:
         # When not ingesting, write to a default CQL file.

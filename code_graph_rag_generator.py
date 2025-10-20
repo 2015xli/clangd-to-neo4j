@@ -540,6 +540,10 @@ def main():
 
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection(): return 1
+
+            # Verify that the project path in the graph matches the one provided
+            if not neo4j_mgr.verify_project_path(args.project_path):
+                return 1
             
             logger.info("Parsing YAML index or loading from cache...")
             symbol_parser = SymbolParser(index_file_path=args.index_file)

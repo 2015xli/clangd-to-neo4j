@@ -62,6 +62,10 @@ class GraphUpdater:
 
             self.neo4j_manager = neo4j_mgr
 
+            # Verify that the project path in the graph matches the one provided
+            if not self.neo4j_manager.verify_project_path(self.project_path):
+                sys.exit(1)
+
             # Determine the commit range for the update.
             if self.new_commit is None:
                 self.new_commit = self.git_manager.get_head_commit_hash()

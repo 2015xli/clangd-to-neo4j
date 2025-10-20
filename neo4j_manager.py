@@ -72,6 +72,27 @@ class Neo4jManager:
             return result[0]['hash']
         return None
 
+    def verify_project_path(self, project_path: str) -> bool:
+        """Verifies that the project path in the graph matches the provided path."""
+        query = "MATCH (p:PROJECT) RETURN p.path AS path"
+        result = self.execute_read_query(query)
+
+        if not result:
+            logger.warning("No PROJECT node found in the graph. Skipping path verification, assuming new graph.")
+            return True # Allow proceeding on an empty graph
+
+        if len(result) > 1:
+            logger.error(f"Multiple PROJECT nodes found in the graph. Aborting due to ambiguous state.")
+            return False
+
+        graph_project_path = result[0].get('path')
+        if graph_project_path != project_path:
+            logger.critical(f"Project path mismatch! Provided: '{project_path}', Graph contains: '{graph_project_path}'. Aborting.")
+            return False
+
+        logger.info("Project path verification successful.")
+        return True
+
     def process_batch(self, batch: List[Tuple[str, Dict]]) -> List[Any]: # Returns list of summary.counters
         all_counters = []
         with self.driver.session() as session:
