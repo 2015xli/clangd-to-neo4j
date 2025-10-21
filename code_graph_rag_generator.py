@@ -218,7 +218,7 @@ class RagGenerator:
         if not body_span: return None
         source_code = self._get_source_code_from_span(body_span)
         if not source_code: return None
-        logger.info(f"Summarize function {source_code}...")
+        #logger.info(f"Summarize function {source_code}...")
 
         prompt = f"Summarize the purpose of this C function based on its code:\n\n```c\n{source_code}```"
         summary = self.llm_client.generate_summary(prompt)

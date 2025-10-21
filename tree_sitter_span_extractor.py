@@ -9,6 +9,7 @@ import logging
 import gc
 import pickle
 from typing import Optional
+from tqdm import tqdm
 
 try:
     import git
@@ -349,18 +350,13 @@ class SpanExtractor:
         else:
             logger.info("No valid cache found. Parsing source files for spans...")
             all_docs = []
-            processed_files = 0
-            for file_path in cache.get_source_files():
+            source_files = cache.get_source_files()
+            for file_path in tqdm(source_files, desc="Parsing source files for spans"):
                 res = self.get_function_spans(file_path, format="dict")
                 if res:
                     all_docs.append(res)
-                
-                processed_files += 1
-                if processed_files % self.log_batch_size == 0:
-                    print(".", end="", flush=True)
             
-            print(flush=True)
-            logger.info(f"Finished processing {processed_files} source files for spans.")
+            logger.info(f"Finished processing {len(source_files)} source files for spans.")
             cache.save(all_docs)
 
         gc.collect()

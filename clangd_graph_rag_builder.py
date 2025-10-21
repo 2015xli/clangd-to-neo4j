@@ -121,7 +121,7 @@ class GraphBuilder:
             extractor = ClangdCallGraphExtractorWithoutContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         
         call_relations = extractor.extract_call_relationships()
-        extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
+        extractor.ingest_call_relations(call_relations, neo4j_mgr=neo4j_mgr)
         del extractor, call_relations
         gc.collect()
         logger.info("--- Finished Pass 3 ---")

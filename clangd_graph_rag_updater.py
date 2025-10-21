@@ -38,7 +38,7 @@ class GraphUpdater:
         self.ingest_batch_size = ingest_batch_size
         self.cypher_tx_size = cypher_tx_size
         self.defines_generation = defines_generation
-        self.neo4j_manager = None
+        self.neo4j_mgr = None
         self.generate_summary = generate_summary
         self.llm_api = llm_api
         self.num_local_workers = num_local_workers
@@ -60,10 +60,10 @@ class GraphUpdater:
             if not neo4j_mgr.check_connection():
                 return 1
 
-            self.neo4j_manager = neo4j_mgr
+            self.neo4j_mgr = neo4j_mgr
 
             # Verify that the project path in the graph matches the one provided
-            if not self.neo4j_manager.verify_project_path(self.project_path):
+            if not self.neo4j_mgr.verify_project_path(self.project_path):
                 sys.exit(1)
 
             # Determine the commit range for the update.
@@ -72,7 +72,7 @@ class GraphUpdater:
                 logger.info(f"No new-commit specified. Using current HEAD: {self.new_commit}")
 
             if self.old_commit is None:
-                self.old_commit = self.neo4j_manager.get_graph_commit_hash(self.project_path)
+                self.old_commit = self.neo4j_mgr.get_graph_commit_hash(self.project_path)
                 if not self.old_commit:
                     logger.error("No old-commit specified and no commit hash found in the database. Cannot determine update range.")
                     sys.exit(1)
@@ -112,7 +112,7 @@ class GraphUpdater:
         self._update_summaries(mini_index_parser, self.changed_files)
 
         # Final Step: Update the commit hash in the graph to the new version
-        self.neo4j_manager.update_project_node(self.project_path, {'commit_hash': self.new_commit})
+        self.neo4j_mgr.update_project_node(self.project_path, {'commit_hash': self.new_commit})
         logger.info(f"Successfully updated PROJECT node to commit: {self.new_commit}")
 
         logger.info("\n✅ Incremental update complete.")
@@ -139,7 +139,7 @@ class GraphUpdater:
         files_to_delete = changed_files['deleted']
         if files_to_delete:
             logger.info(f"Deleting {len(files_to_delete)} FILE nodes from the graph.")
-            self.neo4j_manager.purge_files(files_to_delete)
+            self.neo4j_mgr.purge_files(files_to_delete)
 
         # Files whose defined symbols need to be purged and re-ingested.
         # This includes modified files and the original paths of renamed/deleted files.
@@ -149,7 +149,7 @@ class GraphUpdater:
         )
         if files_to_purge_symbols_from:
             logger.info(f"Purging symbols from {len(files_to_purge_symbols_from)} changed/deleted files.")
-            self.neo4j_manager.purge_symbols_defined_in_files(files_to_purge_symbols_from)
+            self.neo4j_mgr.purge_symbols_defined_in_files(files_to_purge_symbols_from)
 
         logger.info("Phase 2 complete.")
 
@@ -226,7 +226,7 @@ class GraphUpdater:
 
         # Step 4a: Rebuild File Structure
         logger.info("Step 4a: Rebuilding file structure...")
-        path_processor = PathProcessor(path_manager, self.neo4j_manager, self.log_batch_size, self.ingest_batch_size)
+        path_processor = PathProcessor(path_manager, self.neo4j_mgr, self.log_batch_size, self.ingest_batch_size)
         path_processor.ingest_paths(mini_index_parser.symbols)
         del path_processor
 
@@ -239,7 +239,7 @@ class GraphUpdater:
             cypher_tx_size=self.cypher_tx_size
         )
         # Use the configured defines generation strategy 
-        symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_manager, self.defines_generation)
+        symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_mgr, self.defines_generation)
         del symbol_processor
 
         # Step 4c: Rebuild Call Graph
@@ -254,7 +254,7 @@ class GraphUpdater:
             extractor = ClangdCallGraphExtractorWithoutContainer(mini_index_parser, self.log_batch_size, self.ingest_batch_size)
 
         call_relations = extractor.extract_call_relationships()
-        extractor.ingest_call_relations(call_relations, neo4j_manager=self.neo4j_manager)
+        extractor.ingest_call_relations(call_relations, neo4j_mgr=self.neo4j_mgr)
         del extractor, call_relations
 
         gc.collect()
@@ -282,7 +282,7 @@ class GraphUpdater:
             gc.collect()
 
         rag_generator = RagGenerator(
-            neo4j_mgr=self.neo4j_manager,
+            neo4j_mgr=self.neo4j_mgr,
             project_path=self.project_path,
             span_provider=self.function_span_provider,
             llm_client=llm_client,
@@ -333,7 +333,7 @@ def main():
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
     # Set a different default for defines_generation for safety in updates
-    parser.set_defaults(defines_generation='isolated-parallel')
+    parser.set_defaults(defines_generation='batched-parallel')
 
     args = parser.parse_args()
 

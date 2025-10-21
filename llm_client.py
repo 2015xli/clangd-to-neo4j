@@ -91,8 +91,8 @@ class OllamaClient(LlmClient):
             return ""
 
 class FakeLlmClient(LlmClient):
-    """A fake client for debugging that returns a static summary."""
-    is_local: bool = True
+    """A fake client for debugging that returns a static summary. Acts as remote API service"""
+    #is_local: bool = True
 
     def generate_summary(self, prompt: str) -> str:
         """Returns a hardcoded summary for any prompt."""

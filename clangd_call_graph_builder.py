@@ -13,6 +13,7 @@ import os
 import argparse
 import json
 import math
+from tqdm import tqdm
 
 import input_params
 from tree_sitter_span_extractor import SpanExtractor
@@ -80,7 +81,7 @@ Functions that are only called (leaf functions): {len(callees - callers)}
 """
         return stats
 
-    def ingest_call_relations(self, call_relations: List[CallRelation], neo4j_manager: Optional[Neo4jManager] = None) -> None:
+    def ingest_call_relations(self, call_relations: List[CallRelation], neo4j_mgr: Optional[Neo4jManager] = None) -> None:
         """
         Ingests call relations into Neo4j in batches, or writes them to a CQL file.
         """
@@ -89,19 +90,19 @@ Functions that are only called (leaf functions): {len(callees - callers)}
             return
 
         total_relations = len(call_relations)
-        logger.info(f"Preparing {total_relations} call relationships for batched ingestion (batch size: {self.ingest_batch_size}).")
+        logger.info(f"Preparing {total_relations} call relationships for batched ingestion (1 batch = {self.ingest_batch_size} relationships)...")
 
         output_file_path = "generated_call_graph_cypher_queries.cql"
         file_mode = 'w'
         
         total_rels_created = 0
 
-        for i in range(0, total_relations, self.ingest_batch_size):
+        for i in tqdm(range(0, total_relations, self.ingest_batch_size), desc="Ingesting CALLS relations"):
             batch = call_relations[i:i + self.ingest_batch_size]
             query_template, params = self.get_call_relation_ingest_query(batch)
 
-            if neo4j_manager:
-                all_counters = neo4j_manager.process_batch([(query_template, params)])
+            if neo4j_mgr:
+                all_counters = neo4j_mgr.process_batch([(query_template, params)])
                 for counters in all_counters:
                     total_rels_created += counters.relationships_created
             else:
@@ -113,11 +114,8 @@ Functions that are only called (leaf functions): {len(callees - callers)}
                     f.write(f"// PARAMS: {formatted_params}\n")
                 file_mode = 'a'
 
-            print(".", end="", flush=True)
-
-        print(flush=True)
         logger.info(f"Finished processing {total_relations} call relationships in batches.")
-        if neo4j_manager:
+        if neo4j_mgr:
             logger.info(f"  Total CALLS relationships created: {total_rels_created}")
         else:
             logger.info(f"Batched Cypher queries written to {output_file_path}")
@@ -288,11 +286,11 @@ def main():
             if neo4j_mgr.check_connection():
                 if not neo4j_mgr.verify_project_path(args.project_path):
                     return
-                extractor.ingest_call_relations(call_relations, neo4j_manager=neo4j_mgr)
+                extractor.ingest_call_relations(call_relations, neo4j_mgr=neo4j_mgr)
     else:
         # When not ingesting, write to a default CQL file.
         # The ingest_call_relations method handles this logic.
-        extractor.ingest_call_relations(call_relations, neo4j_manager=None)
+        extractor.ingest_call_relations(call_relations, neo4j_mgr=None)
     
     # 5. Generate statistics
     if args.stats:

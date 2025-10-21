@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Tuple, Optional
 from collections import defaultdict
 import logging
 import gc
+from tqdm import tqdm
 
 import input_params
 # New imports from the common parser module
@@ -93,14 +94,10 @@ class SymbolProcessor:
     def _process_and_filter_symbols(self, symbols: Dict[str, Symbol]) -> Tuple[List[Dict], List[Dict], List[Dict], List[Dict]]:
         symbol_data_list = []
         logger.info("Processing symbols for ingestion...")
-        for i, sym in enumerate(symbols.values()):
-            if (i + 1) % self.log_batch_size == 0:
-                print(".", end="", flush=True)
-            
+        for sym in tqdm(symbols.values(), desc="Processing symbols"):
             data = self.process_symbol(sym)
             if data:
                 symbol_data_list.append(data)
-        print(flush=True)
         
         function_data_list = [d for d in symbol_data_list if d['kind'] == 'Function']
         data_structure_data_list = [d for d in symbol_data_list if d['kind'] in ('Struct', 'Class', 'Union', 'Enum')]
@@ -140,10 +137,10 @@ class SymbolProcessor:
     def _ingest_function_nodes(self, function_data_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not function_data_list:
             return
-        logger.info(f"Creating {len(function_data_list)} FUNCTION nodes in batches...")
+        logger.info(f"Creating {len(function_data_list)} FUNCTION nodes in batches (1 batch = {self.ingest_batch_size} nodes)...")
         total_nodes_created = 0
         total_properties_set = 0
-        for i in range(0, len(function_data_list), self.ingest_batch_size):
+        for i in tqdm(range(0, len(function_data_list), self.ingest_batch_size), desc="Ingesting FUNCTION nodes"):
             batch = function_data_list[i:i + self.ingest_batch_size]
             function_merge_query = """
             UNWIND $function_data AS data
@@ -155,17 +152,15 @@ class SymbolProcessor:
             for counters in all_counters:
                 total_nodes_created += counters.nodes_created
                 total_properties_set += counters.properties_set
-            print(".", end="", flush=True)
-        print(flush=True)
         logger.info(f"  Total FUNCTION nodes created: {total_nodes_created}, properties set: {total_properties_set}")
 
     def _ingest_data_structure_nodes(self, data_structure_data_list: List[Dict], neo4j_mgr: Neo4jManager):
         if not data_structure_data_list:
             return
-        logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes in batches...")
+        logger.info(f"Creating {len(data_structure_data_list)} DATA_STRUCTURE nodes in batches (1 batch = {self.ingest_batch_size} nodes)...")
         total_nodes_created = 0
         total_properties_set = 0
-        for i in range(0, len(data_structure_data_list), self.ingest_batch_size):
+        for i in tqdm(range(0, len(data_structure_data_list), self.ingest_batch_size), desc="Ingesting DATA_STRUCTURE nodes"):
             batch = data_structure_data_list[i:i + self.ingest_batch_size]
             data_structure_merge_query = """
             UNWIND $data_structure_data AS data
@@ -177,8 +172,6 @@ class SymbolProcessor:
             for counters in all_counters:
                 total_nodes_created += counters.nodes_created
                 total_properties_set += counters.properties_set
-            print(".", end="", flush=True)
-        print(flush=True)
         logger.info(f"  Total DATA_STRUCTURE nodes created: {total_nodes_created}, properties set: {total_properties_set}")
 
     def _get_defines_stats(self, defines_list: List[Dict]) -> str:
@@ -200,8 +193,8 @@ class SymbolProcessor:
         total_rels_created = 0
         total_rels_merged = 0
         if defines_function_list:
-            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
-            for i in range(0, len(defines_function_list), self.ingest_batch_size):
+            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships in batches (1 batch = {self.ingest_batch_size} relationships)...")
+            for i in tqdm(range(0, len(defines_function_list), self.ingest_batch_size), desc="DEFINES (Functions)"):
                 batch = defines_function_list[i:i + self.ingest_batch_size]
                 defines_rel_query = """
                 CALL apoc.periodic.iterate(
@@ -221,17 +214,14 @@ class SymbolProcessor:
                 if results and len(results) > 0:
                     total_rels_created += results[0].get("totalRelsCreated", 0)
                     total_rels_merged += results[0].get("totalRelsMerged", 0)
-
-                print(".", end="", flush=True)
-            print(flush=True)
             logger.info(f"  Total DEFINES FUNCTIONS relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
         total_rels_created = 0
         total_rels_merged = 0
         if defines_data_structure_list:
-            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
-            for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
+            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships in batches (1 batch = {self.ingest_batch_size} relationships)...")
+            for i in tqdm(range(0, len(defines_data_structure_list), self.ingest_batch_size), desc="DEFINES (Data Structures)"):
                 batch = defines_data_structure_list[i:i + self.ingest_batch_size]
                 defines_rel_query = """
                 CALL apoc.periodic.iterate(
@@ -251,9 +241,6 @@ class SymbolProcessor:
                 if results and len(results) > 0:
                     total_rels_created += results[0].get("totalRelsCreated", 0)
                     total_rels_merged += results[0].get("totalRelsMerged", 0)
-
-                print(".", end="", flush=True)
-            print(flush=True)
             logger.info(f"  Total DEFINES DATA_STRUCTURE relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
         logger.info("Finished DEFINES relationship ingestion.")
@@ -310,7 +297,7 @@ class SymbolProcessor:
         total_rels_created = 0
         total_rels_merged = 0
 
-        for i in range(0, len(list_of_groups), final_groups_per_query):
+        for i in tqdm(range(0, len(list_of_groups), final_groups_per_query), desc=f"DEFINES ({node_label_filter.strip(':')})"):
             query_batch = list_of_groups[i:i + final_groups_per_query]
 
             defines_rel_query = f"""
@@ -331,9 +318,7 @@ class SymbolProcessor:
             if results and len(results) > 0:
                 total_rels_created += results[0].get("totalRelsCreated", 0)
                 total_rels_merged += results[0].get("totalRelsMerged", 0)
-            print(".", end="", flush=True)
 
-        print(flush=True)
         logger.info(f"  Total DEFINES {node_label_filter} relationships created: {total_rels_created}, merged: {total_rels_merged}")
 
     def _ingest_defines_relationships_unwind_sequential(self, defines_function_list: List[Dict], defines_data_structure_list: List[Dict], neo4j_mgr: Neo4jManager):
@@ -349,8 +334,8 @@ class SymbolProcessor:
         # Ingest FUNCTION DEFINES relationships
         total_rels_created_func = 0
         if defines_function_list:
-            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships...")
-            for i in range(0, len(defines_function_list), self.ingest_batch_size):
+            logger.info(f"  Ingesting {len(defines_function_list)} FUNCTION DEFINES relationships in batches (1 batch = {self.ingest_batch_size} relationships)...")
+            for i in tqdm(range(0, len(defines_function_list), self.ingest_batch_size), desc="DEFINES (Functions, sequential)"):
                 batch = defines_function_list[i:i + self.ingest_batch_size]
                 defines_rel_query = """
                 UNWIND $defines_data AS data
@@ -363,15 +348,13 @@ class SymbolProcessor:
                     {"defines_data": batch}
                 )
                 total_rels_created_func += counters.relationships_created
-                print(".", end="", flush=True)
-            print(flush=True)
             logger.info(f"  Total FUNCTION DEFINES relationships created: {total_rels_created_func}")
 
         # Ingest DATA_STRUCTURE DEFINES relationships
         total_rels_created_ds = 0
         if defines_data_structure_list:
-            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships...")
-            for i in range(0, len(defines_data_structure_list), self.ingest_batch_size):
+            logger.info(f"  Ingesting {len(defines_data_structure_list)} DATA_STRUCTURE DEFINES relationships in batches (1 batch = {self.ingest_batch_size} relationships)...")
+            for i in tqdm(range(0, len(defines_data_structure_list), self.ingest_batch_size), desc="DEFINES (Data Structures, sequential)"):
                 batch = defines_data_structure_list[i:i + self.ingest_batch_size]
                 defines_rel_query = """
                 UNWIND $defines_data AS data
@@ -384,10 +367,8 @@ class SymbolProcessor:
                     {"defines_data": batch}
                 )
                 total_rels_created_ds += counters.relationships_created
-                print(".", end="", flush=True)
-            print(flush=True)
             logger.info(f"  Total DATA_STRUCTURE DEFINES relationships created: {total_rels_created_ds}")
-        logger.info("Finished DEFINES relationship ingestion (sequential UNWIND CREATE).")
+        logger.info("Finished DEFINES relationship ingestion (sequential UNWIND MERGE).")
 
 class PathProcessor:
     """Discovers and ingests file/folder structure into Neo4j."""
@@ -397,9 +378,7 @@ class PathProcessor:
     def _discover_paths(self, symbols: Dict[str, Symbol]) -> Tuple[set, set]:
         project_files, project_folders = set(), set()
         logger.info("Discovering project file structure...")
-        for i, sym in enumerate(symbols.values()):
-            if (i + 1) % self.log_batch_size == 0:
-                print(".", end="", flush=True)
+        for sym in tqdm(symbols.values(), desc="Discovering paths"):
             for loc in [sym.definition, sym.declaration]:
                 if loc and urlparse(loc.file_uri).scheme == 'file':
                     abs_path = unquote(urlparse(loc.file_uri).path)
@@ -410,7 +389,6 @@ class PathProcessor:
                         while str(parent) != '.' and str(parent) != '/':
                             project_folders.add(str(parent))
                             parent = parent.parent
-        print(flush=True)
         logger.info(f"Discovered {len(project_files)} files and {len(project_folders)} folders.")
         return project_files, project_folders
 
@@ -470,7 +448,7 @@ class PathProcessor:
         total_properties_set = 0
         total_rels_created = 0
         logger.info(f"Creating {len(folder_data_list)} folder nodes and relationships in batches...")
-        for i in range(0, len(folder_data_list), self.ingest_batch_size):
+        for i in tqdm(range(0, len(folder_data_list), self.ingest_batch_size), desc="Ingesting FOLDER nodes"):
             batch = folder_data_list[i:i + self.ingest_batch_size]
             folder_merge_query = """
             UNWIND $folder_data AS data
@@ -505,9 +483,6 @@ class PathProcessor:
             for counters in rel_counters:
                 total_rels_created += counters.relationships_created
 
-            print(".", end="", flush=True)
-
-        print(flush=True)
         logger.info(f"  Total FOLDER nodes created: {total_nodes_created}, properties set: {total_properties_set}")
         logger.info(f"  Total CONTAINS relationships created for FOLDERs: {total_rels_created}")
 
@@ -520,7 +495,7 @@ class PathProcessor:
         total_properties_set = 0
         total_rels_created = 0
 
-        for i in range(0, len(file_data_list), self.ingest_batch_size):
+        for i in tqdm(range(0, len(file_data_list), self.ingest_batch_size), desc="Ingesting FILE nodes"):
             batch = file_data_list[i:i + self.ingest_batch_size]
             file_merge_query = """
             UNWIND $file_data AS data
@@ -555,9 +530,6 @@ class PathProcessor:
             for counters in rel_counters:
                 total_rels_created += counters.relationships_created
 
-            print(".", end="", flush=True)
-
-        print(flush=True)
         logger.info(f"  Total FILE nodes created: {total_nodes_created}, properties set: {total_properties_set}")
         logger.info(f"  Total CONTAINS relationships created for FILEs: {total_rels_created}")
 
