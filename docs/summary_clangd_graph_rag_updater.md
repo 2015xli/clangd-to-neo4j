@@ -63,6 +63,7 @@ The update process is divided into five main phases:
 *   **Mechanism**: 
     *   Initializes the `RagGenerator`.
     *   Calls `rag_generator.summarize_targeted_update()` with the `seed_symbol_ids` saved from Phase 3.
+    *   **File Preparation for Span Provider**: For the span provider, the updater intelligently prepares the list of files to be scanned. Instead of just passing the initially changed files, it collects all unique source files (`.c` and `.h`) that are referenced by any symbol within the "Mini-Index" (which includes changed symbols and their 1-hop neighbors). This ensures that all relevant files, especially headers whose changes might affect multiple translation units, are re-scanned by the chosen span extraction strategy. This list is then passed to the `FunctionSpanProvider`'s `paths` argument.
 *   **Result-Driven Workflow Subtlety**: This triggers a highly efficient, multi-pass process within the `RagGenerator`. The key to its efficiency is that it's a result-driven workflow. Pass 1 (code-only summaries) returns the precise set of functions that were actually updated. This set is then used to define the scope for Pass 2 (context-aware summaries). Pass 2, in turn, returns the precise set of functions whose final `summary` property changed. This final set is then used to determine the exact files and folders that require their "roll-up" summaries to be recalculated. This prevents unnecessary processing of functions, files, or folders that were not affected by the initial code changes.
 
 ## 5. Command-Line Arguments

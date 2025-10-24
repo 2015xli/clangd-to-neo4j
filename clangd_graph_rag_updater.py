@@ -4,11 +4,12 @@ Orchestrates the incremental update of the code graph based on Git commits.
 """
 
 import argparse
+from urllib.parse import urlparse, unquote
 import sys, math
 import logging
 import os
 import gc
-from typing import Optional, List, Dict, Set, Tuple
+from typing import Optional, List, Dict, Set
 
 import input_params
 from git_manager import GitManager
@@ -28,6 +29,7 @@ class GraphUpdater:
 
     def __init__(self, project_path: str, index_file: str, old_commit: str, new_commit: str, num_parse_workers: int,
                  log_batch_size: int, ingest_batch_size: int, cypher_tx_size: int, defines_generation: str,
+                 span_extractor: str, compile_commands: Optional[str],
                  generate_summary: bool, llm_api: str, num_local_workers: int, num_remote_workers: int):
         self.project_path = project_path
         self.index_file = index_file
@@ -38,6 +40,8 @@ class GraphUpdater:
         self.ingest_batch_size = ingest_batch_size
         self.cypher_tx_size = cypher_tx_size
         self.defines_generation = defines_generation
+        self.span_extractor = span_extractor
+        self.compile_commands = compile_commands
         self.neo4j_mgr = None
         self.generate_summary = generate_summary
         self.llm_api = llm_api
@@ -304,17 +308,29 @@ class GraphUpdater:
     def _get_function_span_provider(self, mini_index_parser: SymbolParser):
         if self.function_span_provider:
             return self.function_span_provider
-        # Get the list of files that exist in the new commit for the span provider.
-        files_for_span_provider = (
-            self.changed_files.get('added', []) +
-            self.changed_files.get('modified', []) +
-            [p['new'] for p in self.changed_files.get('renamed', [])]
-        )
-        abs_file_list = [os.path.abspath(os.path.join(self.project_path, f)) for f in files_for_span_provider]
+
+        # For the clang extractor, we need to re-parse all translation units (.c files)
+        # that are affected by the changes. The safest way to do this is to find all
+        # unique source files referenced by any symbol in our mini-index (which contains
+        # the changed symbols + their 1-hop neighbors).
+        logger.info("Determining files to re-scan based on mini-index...")
+        files_to_scan = set()
+        for symbol in mini_index_parser.symbols.values():
+            if symbol.definition:
+                # The file URI is already absolute, so we just need to convert it to a path
+                path = unquote(urlparse(symbol.definition.file_uri).path)
+                files_to_scan.add(path)
+
+        logger.info(f"Found {len(files_to_scan)} unique files referenced in the mini-index.")
+        abs_file_list = [os.path.abspath(f) for f in files_to_scan]
+
         self.function_span_provider = FunctionSpanProvider(
             symbol_parser=mini_index_parser,
-            paths=abs_file_list,
-            log_batch_size=self.log_batch_size
+            project_path=self.project_path,
+            paths=abs_file_list, # Pass ALL files from the mini-index
+            log_batch_size=self.log_batch_size,
+            extractor_type=self.span_extractor,
+            compile_commands_path=self.compile_commands
         )
         return self.function_span_provider
         
@@ -332,6 +348,7 @@ def main():
     input_params.add_batching_args(parser)
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
+    input_params.add_span_extractor_args(parser)
     # Set a different default for defines_generation for safety in updates
     parser.set_defaults(defines_generation='batched-parallel')
 
@@ -359,6 +376,8 @@ def main():
         ingest_batch_size=args.ingest_batch_size,
         cypher_tx_size=args.cypher_tx_size,
         defines_generation=args.defines_generation,
+        span_extractor=args.span_extractor,
+        compile_commands=args.compile_commands,
         generate_summary=args.generate_summary,
         llm_api=args.llm_api,
         num_local_workers=args.num_local_workers,

@@ -16,7 +16,7 @@ import math
 from tqdm import tqdm
 
 import input_params
-from tree_sitter_span_extractor import SpanExtractor
+from function_span_extractor import SpanExtractor
 from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
@@ -242,6 +242,7 @@ def main():
     input_params.add_worker_args(parser)
     input_params.add_batching_args(parser)
     input_params.add_logistic_args(parser)
+    input_params.add_span_extractor_args(parser)
 
     args = parser.parse_args()
 
@@ -271,8 +272,15 @@ def main():
         logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
         from function_span_provider import FunctionSpanProvider
         if os.path.isdir(args.project_path):
-            # The provider runs tree-sitter and enriches the symbol_parser object in place.
-            FunctionSpanProvider(symbol_parser=symbol_parser, paths=[args.project_path], log_batch_size=args.log_batch_size)
+            # The provider runs the chosen strategy and enriches the symbol_parser object in place.
+            FunctionSpanProvider(
+                symbol_parser=symbol_parser,
+                project_path=args.project_path,
+                paths=[args.project_path],
+                log_batch_size=args.log_batch_size,
+                extractor_type=args.span_extractor,
+                compile_commands_path=args.compile_commands
+            )
         else:
             logger.error(f"Project path for span extraction not found or not a directory: {args.project_path}")
             return

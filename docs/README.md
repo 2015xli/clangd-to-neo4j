@@ -25,8 +25,8 @@ These documents detail the core modules responsible for each major stage of the 
 -   **[summary_clangd_symbol_nodes_builder.md](./summary_clangd_symbol_nodes_builder.md)**: Details the creation of the graph's structural backbone (files, folders, symbols).
 -   **[summary_clangd_call_graph_builder.md](./summary_clangd_call_graph_builder.md)**: Covers the adaptive strategies for constructing the function call graph.
 -   **[summary_code_graph_rag_generator.md](./summary_code_graph_rag_generator.md)**: Describes the multi-pass process for generating AI summaries and embeddings.
--   **[summary_function_span_provider.md](./summary_function_span_provider.md)**: Explains how `tree-sitter` is used to find function source code locations.
--   **[summary_tree_sitter_span_extractor.md](./summary_tree_sitter_span_extractor.md)**: Details the low-level `tree-sitter` parsing logic.
+-   **[summary_function_span_provider.md](./summary_function_span_provider.md)**: Explains how function source code locations are acquired and cached.
+-   **[summary_function_span_extractor.md](./summary_function_span_extractor.md)**: Details the low-level parsing logic, supporting both `tree-sitter` and `clang.cindex` strategies.
 
 ### Supporting Modules
 

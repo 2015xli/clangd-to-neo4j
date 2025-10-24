@@ -14,7 +14,7 @@ They are looked up using one of the Symbols and the kind.
 ============ Numbers are 0-indexed
 Both tree-sitter and clangd-indexer generate line number and row/column number as 0-indexed
 
-============ Differences in clangd index yaml file schema between different clangd-indexer versions
+============ Differences in clangd index RefKind definition between different clangd-indexer versions
 
 ----------------- In clangd-indexer 16.x ----------------
 // clang-tools-extra/clangd/index/Ref.h
@@ -125,4 +125,45 @@ References:
         Column:          46
     Container:
       ID:              3F406DEEEB8B595D
+
+
+============== clangd yaml Relation definition ======
+
+------------ in clang-tools-extra/clangd/index/Relation.h. The same across clangd versions  ----------------
+enum class RelationKind : uint8_t {
+  BaseOf,
+  OverriddenBy,
+};
+
+/// Represents a relation between two symbols.
+/// For an example:
+///   - "A is a base class of B" is represented as
+///     { Subject = A, Predicate = BaseOf, Object = B }.
+///   - "Derived::Foo overrides Base::Foo" is represented as
+///     { Subject = Base::Foo, Predicate = OverriddenBy, Object = Derived::Foo
+///     }.
+struct Relation {
+  SymbolID Subject;
+  RelationKind Predicate;
+  SymbolID Object;
+  ...
+}
+
+For example in yaml file:
+
+--- !Relations
+Subject:
+  ID:              C2AE102986F46A90
+Predicate:       0
+Object:
+  ID:              26082A178A64E2E2
+...
+--- !Relations
+Subject:
+  ID:              B5BB9FE28E81E490
+Predicate:       1
+Object:
+  ID:              14FC8C8A8594E7C0
+...
+
 

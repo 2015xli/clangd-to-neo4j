@@ -7,28 +7,33 @@ from a C/C++ project using tree-sitter.
 import logging
 import os, gc
 from collections import defaultdict
-from typing import List
+from typing import List, Optional
 
 from urllib.parse import urlparse, unquote
 
 from clangd_index_yaml_parser import SymbolParser, FunctionSpan
-from tree_sitter_span_extractor import SpanExtractor
+from function_span_extractor import SpanExtractor
 
 logger = logging.getLogger(__name__)
 
 class FunctionSpanProvider:
     """
-    Runs tree-sitter to parse a project or a list of files, finds the precise body
-    locations of all functions, and enriches the Symbol objects from a
-    SymbolParser with this information.
+    Runs a selected span extraction strategy (clang or treesitter) and maps the
+    results to the Symbol objects from a SymbolParser.
     """
-    def __init__(self, symbol_parser: SymbolParser, paths: List[str], log_batch_size: int = 1000):
+    def __init__(self, symbol_parser: SymbolParser, project_path: str, paths: List[str], 
+                 log_batch_size: int = 1000, extractor_type: str = 'clang', 
+                 compile_commands_path: Optional[str] = None):
         if not paths:
             raise ValueError("The 'paths' list cannot be empty.")
-        
-        self.paths = paths
+
         self.symbol_parser = symbol_parser
+        self.project_path = project_path
+        self.paths = paths
         self.log_batch_size = log_batch_size
+        self.extractor_type = extractor_type
+        self.compile_commands_path = compile_commands_path
+        
         self.function_spans_by_file: dict[str, list[FunctionSpan]] = {}
         self._body_spans_by_id: dict[str, dict] = {}
 
@@ -38,23 +43,34 @@ class FunctionSpanProvider:
 
     def _extract_spans(self):
         """
-        Extracts function spans from a list of files and/or folders.
+        Extracts function spans using the selected strategy, handling both
+        full project scans and specific file/folder lists.
         """
-        logger.info("Extracting function spans with tree-sitter...")
-        span_extractor = SpanExtractor(self.log_batch_size)
-        
-        # Fast path for single, large project directory
-        if len(self.paths) == 1 and os.path.isdir(self.paths[0]):
-            project_path = self.paths[0]
-            logger.info(f"Processing single project folder (optimized path): {project_path}")
-            function_span_file_dicts = span_extractor.get_function_spans_from_folder(
-                project_path,
+        logger.info(f"Extracting function spans with '{self.extractor_type}' strategy...")
+        span_extractor = SpanExtractor(
+            log_batch_size=self.log_batch_size,
+            extractor_type=self.extractor_type,
+            project_path=self.project_path,
+            compile_commands_path=self.compile_commands_path
+        )
+
+        # Case 1: Fast path for a single, full project directory (uses caching)
+        is_full_project_scan = (
+            len(self.paths) == 1 and 
+            os.path.isdir(self.paths[0]) and 
+            os.path.abspath(self.paths[0]) == os.path.abspath(self.project_path)
+        )
+
+        if is_full_project_scan:
+            logger.info(f"Processing single project folder (full build path): {self.project_path}")
+            function_span_file_dicts = span_extractor.extract_from_folder(
+                self.project_path,
                 format="dict",
                 cache_path_spec=self.symbol_parser.index_file_path
             )
+        # Case 2: A specific list of files/folders is provided (no caching)
         else:
-            # Normalization path for mixed files/folders or multiple paths
-            logger.info(f"Processing custom list of {len(self.paths)} paths...")
+            logger.info(f"Processing custom list of {len(self.paths)} paths (updater/partial build path)...")
             unique_files = set()
             for path in self.paths:
                 if os.path.isfile(path):
@@ -67,8 +83,7 @@ class FunctionSpanProvider:
             
             file_list = sorted(list(unique_files))
             logger.info(f"Normalized to {len(file_list)} unique source files.")
-            # Note: get_function_spans_from_files does not currently support caching
-            function_span_file_dicts = span_extractor.get_function_spans_from_files(file_list, format="dict")
+            function_span_file_dicts = span_extractor.extract_from_files(file_list, format="dict")
 
         del span_extractor
         gc.collect()

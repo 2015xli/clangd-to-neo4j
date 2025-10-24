@@ -14,7 +14,9 @@ The `FunctionSpanProvider` class orchestrates the entire process, which is trigg
 
 ### Step 1: Span Extraction (`_extract_spans`)
 
-*   **Mechanism**: This step uses the `SpanExtractor` class (from `tree_sitter_span_extractor.py`) to perform the low-level code parsing. It recursively scans the provided project directory for all C/C++ source files (`.c`, `.h`).
+*   **Mechanism**: This step uses the `SpanExtractor` class (from `function_span_extractor.py`) to perform the low-level code parsing. The behavior depends on the chosen extraction strategy:
+    *   **`treesitter` strategy**: Recursively scans the project directory for all C/C++ source and header files (`.c`, `.h`) and parses each one individually.
+    *   **`clang` strategy**: Only parses the source files (`.c`, `.cpp`) found in the `compile_commands.json` database. It does not parse headers directly; `libclang` processes them as part of the source file's translation unit.
 *   **Output**: The result of the extraction is a collection of `FunctionSpan` objects, grouped by file URI. Each `FunctionSpan` contains the function's name and its location information as identified by `tree-sitter`.
 
 ### Step 2: Symbol Matching (`_match_function_spans`)

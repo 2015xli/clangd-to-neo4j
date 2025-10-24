@@ -117,7 +117,14 @@ class GraphBuilder:
             logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
         else:
             logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-            self.span_provider = FunctionSpanProvider(symbol_parser=self.symbol_parser, paths=[self.args.project_path], log_batch_size=self.args.log_batch_size)
+            self.span_provider = FunctionSpanProvider(
+                symbol_parser=self.symbol_parser,
+                project_path=self.args.project_path,
+                paths=[self.args.project_path],
+                log_batch_size=self.args.log_batch_size,
+                extractor_type=self.args.span_extractor,
+                compile_commands_path=self.args.compile_commands
+            )
             extractor = ClangdCallGraphExtractorWithoutContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         
         call_relations = extractor.extract_call_relationships()
@@ -145,7 +152,14 @@ class GraphBuilder:
 
         if self.span_provider is None:
             logger.info("Creating new FunctionSpanProvider for summary generation.")
-            self.span_provider = FunctionSpanProvider(self.symbol_parser, [self.args.project_path], log_batch_size=self.args.log_batch_size)
+            self.span_provider = FunctionSpanProvider(
+                symbol_parser=self.symbol_parser,
+                project_path=self.args.project_path,
+                paths=[self.args.project_path],
+                log_batch_size=self.args.log_batch_size,
+                extractor_type=self.args.span_extractor,
+                compile_commands_path=self.args.compile_commands
+            )
         else:
             logger.info("Reusing FunctionSpanProvider created in Pass 3.")
 
@@ -183,6 +197,7 @@ def main():
     input_params.add_batching_args(parser)
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
+    input_params.add_span_extractor_args(parser)
     input_params.add_logistic_args(parser) # For --debug-memory
     
     args = parser.parse_args()
