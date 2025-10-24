@@ -4,7 +4,7 @@
 
 This script is a low-level library module that serves as the primary interface for extracting precise function definition spans from C source code. It is now highly configurable, allowing the user to choose between two distinct parsing strategies:
 
-*   **`treesitter`**: A fast, syntax-only parser that operates directly on source file text.
+*   **`treesitter`**: A fast, syntax-only parser that operates directly on source file text. This stategy is not recommended for our purpose, since it does not deal with code semantics and is inconsistent with the symbol parser that is based on clangd.
 *   **`clang`**: A slower, but semantically accurate parser that leverages `libclang` and a `compile_commands.json` database.
 
 This module provides the ground-truth physical location of code constructs, which is then used by the `FunctionSpanProvider` to link `clangd` symbols to their source code.
@@ -42,8 +42,12 @@ This strategy leverages `libclang` (via `clang.cindex`) for semantically accurat
     *   **Correct File Attribution**: Accurately reports the original source file (`.c` or `.h`) where a function is defined, even if it's part of an included header.
     *   **Dynamic Include Paths**: Automatically discovers `clang`'s internal include paths using `clang -print-resource-dir`.
 *   **De-duplication for Header Functions (Memory Optimization)**:
-    *   **Problem**: Functions defined in header files (`.h`) can be included and thus processed multiple times if those headers are included by several `.c` files.
-    *   **Solution**: The strategy maintains a `self.processed_header_functions` set. When `_walk_ast` encounters a function defined in a header file, it checks this set. If the function has already been processed, it's skipped, preventing redundant data creation and ensuring each header function is reported only once.
+    *   **Problems**: 
+	* Functions defined in header files (`.h`) can be included and thus processed multiple times if those headers are included by several `.c` files. This problem exist in both full graph builder and incremental graph updater.
+	* Header file (`.h`) is not an independent translation unit (TU) for parsing. It is only parsed via `.c` file's including. In full graph builder, this is not a problem, since all the files are processed. In incremental graph updater, this needs special attention. When a header file is modified, the `.c` source files that include it should be found and parsed, even if they are not directly modified, because they may be modified indirectly due to the change of the header file, and also because otherwise the modified header file is not parsed at all. 
+    *   **Solution**: 
+	* To avoid duplicate header file processing, the strategy maintains a `self.processed_header_functions` set. When `_walk_ast` encounters a function defined in a header file, it checks this set. If the function has already been processed, it's skipped, preventing redundant data creation and ensuring each header function is reported only once.
+	* To avoid missing header file procssing, and more importantly, to avoid the impacted source files processing due to the changed header file, the graph updater intelligently prepares the list of files to be scanned. Instead of just passing the initially changed files (modified/added), it collects all unique source files (.c and .h) that are referenced by any symbol within the "Mini-Index" (which includes changed symbols and their 1-hop neighbors). This ensures that all relevant files, especially headers whose changes might affect multiple translation units, are re-scanned by the chosen span extraction strategy. This list is then passed to the FunctionSpanProvider's paths argument. 
 *   **Cons**:
     *   **Requires `compile_commands.json`**: Needs a compilation database to correctly parse files with their full build context.
     *   **Slower**: Semantic parsing is inherently more complex and slower than syntax-only parsing.
@@ -59,3 +63,42 @@ This class is the public interface of the module. It handles strategy selection,
 ## 6. Output Format
 
 Both strategies produce a standardized output: a list of dictionaries, where each dictionary represents a single source file and contains the file's URI and a list of all `FunctionSpan` objects found within it. This consistent format simplifies downstream processing by the `FunctionSpanProvider`.
+Output format: Python list of function spans, grouped by file. (Or YAML string with doc separator --- !FileFunctionSpans)
+Note, all the numbers are 0-based throughout the project
+--- !FileFunctionSpans
+FileURI: file:///home/user/demo.c
+Functions:
+  - Name: foo
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 1
+        Column: 19
+      End:
+        Line: 1
+        Column: 22
+    BodyLocation:
+      Start:
+        Line: 1
+        Column: 26
+      End:
+        Line: 3
+        Column: 1
+  - Name: bar
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 5
+        Column: 6
+      End:
+        Line: 5
+        Column: 9
+    BodyLocation:
+      Start:
+        Line: 5
+        Column: 14
+      End:
+        Line: 7
+        Column: 1
+"""
+

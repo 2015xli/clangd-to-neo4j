@@ -37,6 +37,47 @@ import clang.cindex
 
 logger = logging.getLogger(__name__)
 
+"""
+Extract function spans from C source/header files using clang.cindex (or tree-sitter for syntactical results).
+Output: Python list of function spans, grouped by file. (Or YAML string with doc separator --- !FileFunctionSpans)
+Note, all the numbers are 0-based throughout the project
+--- !FileFunctionSpans
+FileURI: file:///home/user/demo.c
+Functions:
+  - Name: foo
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 1
+        Column: 19
+      End:
+        Line: 1
+        Column: 22
+    BodyLocation:
+      Start:
+        Line: 1
+        Column: 26
+      End:
+        Line: 3
+        Column: 1
+  - Name: bar
+    Kind: Function
+    NameLocation:
+      Start:
+        Line: 5
+        Column: 6
+      End:
+        Line: 5
+        Column: 9
+    BodyLocation:
+      Start:
+        Line: 5
+        Column: 14
+      End:
+        Line: 7
+        Column: 1
+"""
+
 # --- Base Strategy Definition ---
 
 class BaseExtractorStrategy:
