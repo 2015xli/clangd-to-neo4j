@@ -67,5 +67,5 @@ def add_span_extractor_args(parser: argparse.ArgumentParser):
     """Adds arguments for selecting and configuring the span extractor."""
     parser.add_argument('--span-extractor', choices=['clang', 'treesitter'], default='clang',
                         help='The type of span extractor to use. (default: clang)')
-    parser.add_argument('--compile-commands', help='Path to the compile_commands.json file (or its directory). By default, the system will look for it under the provided project_path.')
+    parser.add_argument('--compile-commands', help='Path to the compile_commands.json file (or its directory). (Default: the project path)')
 

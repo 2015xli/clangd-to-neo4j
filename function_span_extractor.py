@@ -173,7 +173,7 @@ class ClangExtractorStrategy(BaseExtractorStrategy):
         path = Path(compile_commands_path).resolve()
         if path.is_dir():
             if not (path / "compile_commands.json").exists():
-                raise FileNotFoundError(f"No compile_commands.json found in directory {path}")
+                raise FileNotFoundError(f"No compile_commands.json found in directory {path}. Please put/link it there or use --compile-commands to specify the path.")
             return str(path)
         elif path.is_file():
             if path.name != "compile_commands.json":
