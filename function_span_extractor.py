@@ -9,7 +9,7 @@ It supports:
 import os
 import sys
 import argparse
-import yaml
+import yaml, json
 import logging
 import gc
 import pickle
@@ -21,12 +21,6 @@ from pathlib import Path
 from collections import defaultdict
 from tqdm import tqdm
 
-# Optional Git import
-try:
-    import git
-except ImportError:
-    git = None
-
 # Tree-sitter imports
 import tree_sitter_c as tsc
 from tree_sitter import Language, Parser as TreeSitterParser
@@ -34,6 +28,7 @@ from tree_sitter import Language, Parser as TreeSitterParser
 # Clang imports
 import clang.cindex
 
+from git_manager import get_git_repo
 
 logger = logging.getLogger(__name__)
 
@@ -336,16 +331,6 @@ class SpanExtractor:
             return "\n".join(filter(None, yaml_docs))
 
 # --- Caching Logic ---
-
-def get_git_repo(folder: str) -> Optional[git.Repo]:
-    if not git: return None
-    try:
-        repo = git.Repo(folder, search_parent_directories=True)
-        if not os.path.abspath(folder).startswith(os.path.abspath(repo.working_tree_dir)):
-            return None
-        return repo
-    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
-        return None
 
 class SpanCache:
     def __init__(self, folder: str, cache_path_spec: Optional[str] = None):

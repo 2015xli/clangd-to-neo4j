@@ -4,11 +4,25 @@ This module provides a wrapper around GitPython to identify categorized file cha
 """
 
 import os
-from git import Repo, Git
-from git.exc import InvalidGitRepositoryError, GitCommandError
+import git
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+def get_git_repo(folder: str) -> Optional[git.Repo]:
+    """
+    Finds the git.Repo object for a given folder path.
+    Searches parent directories and ensures the folder is within the repo.
+    """
+    try:
+        repo = git.Repo(folder, search_parent_directories=True)
+        # Ensure the provided folder is within the found repository's working tree
+        if not os.path.abspath(folder).startswith(os.path.abspath(repo.working_tree_dir)):
+            return None
+        return repo
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        return None
 
 class GitManager:
     """Manages Git operations for the graph updater."""
@@ -21,15 +35,15 @@ class GitManager:
             repo_path (str): The path to the Git repository.
         
         Raises:
-            InvalidGitRepositoryError: If the path is not a valid Git repository.
+            git.InvalidGitRepositoryError: If the path is not a valid Git repository.
         """
         try:
             self.repo_path = repo_path
-            self.repo = Repo(repo_path)
-            self.git = Git(repo_path)
+            self.repo = git.Repo(repo_path)
+            self.git = git.Git(repo_path)
             if self.repo.bare:
-                raise InvalidGitRepositoryError(f"Repository at {repo_path} is a bare repository.")
-        except InvalidGitRepositoryError as e:
+                raise git.InvalidGitRepositoryError(f"Repository at {repo_path} is a bare repository.")
+        except git.InvalidGitRepositoryError as e:
             logger.error(f"Error: The path '{repo_path}' is not a valid Git repository.")
             raise
 
@@ -133,7 +147,7 @@ class GitManager:
 
             return files_by_type
 
-        except GitCommandError as e:
+        except git.exc.GitCommandError as e:
             logger.error(f"Git command failed while diffing commits: {e}")
             return files_by_type
 
