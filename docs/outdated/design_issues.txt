@@ -41,3 +41,11 @@ The mini-index has all the symbols related to the changed files. There is a situ
 
   Consequently, the graph would not be correctly updated to reflect the semantic changes that cascaded from the header into those source files. The system would fail to re-summarize or re-analyze the functions in the .c file, because their symbols were never added to the processing scope of the mini-index.
 
+
+It looks good. I have another thought. The current graph for function node does not have property of     
+function span (definition_location), but a property location for name (should be name_location)? I am    
+thinking to create span provider earlier before ingesting function node to provide definition_location   
+for the function node. In this way, we also ensure that we have span provider created always. In this    
+way, we don't need create another span provider in rag (in case it has not created yet), since it is     
+always created. This has a good side effect that, after call-graph is built, we can delete symbol parser,
+since it is the last module that need the parser. Actually RAG generation will not need Span provider at all, since it can retrieve the span from the node directly.

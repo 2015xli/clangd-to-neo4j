@@ -176,6 +176,53 @@ class Neo4jManager:
             logger.info(f"Purged {deleted_symbols} symbols defined in {len(file_paths)} files.")
             return deleted_symbols
 
+    def ingest_include_relations(self, relations: List[Dict], batch_size: int = 1000):
+        """
+        Ingests :INCLUDES relationships between files in batches.
+
+        Args:
+            relations: A list of dictionaries, each with 'including_path' and 'included_path'.
+            batch_size: The number of relations to process in each transaction.
+        """
+        if not relations:
+            return
+
+        logger.info(f"Ingesting {len(relations)} :INCLUDES relationships...")
+        query = """
+        UNWIND $batch as relation
+        MATCH (including:FILE {path: relation.including_path})
+        MATCH (included:FILE {path: relation.included_path})
+        MERGE (including)-[:INCLUDES]->(included)
+        """
+
+        total_created = 0
+        for i in range(0, len(relations), batch_size):
+            batch = relations[i:i + batch_size]
+            summary = self.execute_autocommit_query(query, {"batch": batch})
+            created_in_batch = summary.relationships_created
+            total_created += created_in_batch
+            if created_in_batch > 0:
+                logger.info(f"  ...ingested {i + len(batch)}/{len(relations)} relationships (newly created in batch: {created_in_batch}).")
+
+        logger.info(f"Finished ingesting :INCLUDES relationships. Total new relationships: {total_created}.")
+
+    def purge_include_relations_from_files(self, file_paths: List[str]) -> int:
+        """Deletes all outgoing :INCLUDES relationships from the given file paths."""
+        if not file_paths:
+            return 0
+        
+        query = """
+        UNWIND $paths AS path
+        MATCH (:FILE {path: path})-[r:INCLUDES]->()
+        DELETE r
+        RETURN count(r)
+        """
+        with self.driver.session() as session:
+            result = session.run(query, paths=file_paths)
+            count = result.single()[0]
+            logger.info(f"Purged {count} :INCLUDES relationships from {len(file_paths)} files.")
+            return count
+
     def create_vector_indices(self) -> None:
         """Creates vector indices for summary embeddings."""
         index_queries = [

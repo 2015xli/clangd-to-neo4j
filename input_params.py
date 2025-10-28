@@ -63,9 +63,9 @@ def add_logistic_args(parser: argparse.ArgumentParser):
     parser.add_argument('--ingest', action='store_true', help='If set, ingest data directly into Neo4j.')
     parser.add_argument('--debug-memory', action='store_true', help='Enable memory profiling with tracemalloc.')
 
-def add_span_extractor_args(parser: argparse.ArgumentParser):
-    """Adds arguments for selecting and configuring the span extractor."""
-    parser.add_argument('--span-extractor', choices=['clang', 'treesitter'], default='clang',
-                        help='The type of span extractor to use. (default: clang)')
-    parser.add_argument('--compile-commands', help='Path to the compile_commands.json file (or its directory). (Default: the project path)')
+def add_source_parser_args(parser: argparse.ArgumentParser):
+    """Adds arguments for selecting and configuring the source code parser."""
+    parser.add_argument('--source-parser', choices=['clang', 'treesitter'], default='clang',
+                        help='The source code parser to use for spans and includes. (default: clang)')
+    parser.add_argument('--compile-commands', help='Path to the compile_commands.json file (or its directory). Required for the `clang` parser. (Default: the project path)')
 

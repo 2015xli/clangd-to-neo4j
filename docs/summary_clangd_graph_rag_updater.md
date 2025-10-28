@@ -1,95 +1,61 @@
 # Summary: `clangd_graph_rag_updater.py` - Incremental Code Graph RAG Updater
 
-This document summarizes the design and functionality of `clangd_graph_rag_updater.py`, a script responsible for incrementally updating the Neo4j code graph with RAG (Retrieval Augmented Generation) data based on changes in a Git repository. It leverages a "Mini-Index Approach" to efficiently synchronize the graph without requiring a full rebuild.
+This document summarizes the design and functionality of `clangd_graph_rag_updater.py`. This script is responsible for incrementally updating the Neo4j code graph based on changes in a Git repository.
+
+The logic was significantly refactored to correctly handle header file dependencies, overcoming a flaw in the original "mini-index" approach.
 
 ## 1. Purpose
 
-The primary purpose of `clangd_graph_rag_updater.py` is to provide an efficient mechanism for keeping the Neo4j code graph, including its AI-generated summaries and vector embeddings, synchronized with an evolving C/C++ codebase. This avoids the computationally expensive process of re-ingesting the entire codebase for minor changes.
+The primary purpose of `clangd_graph_rag_updater.py` is to provide an efficient mechanism for keeping the Neo4j code graph synchronized with an evolving C/C++ codebase. This avoids the computationally expensive process of re-ingesting the entire project for minor changes.
 
-## 2. Architecture Overview
+## 2. Core Design: Graph-Based Dependency Analysis
 
-The `clangd_graph_rag_updater.py` script orchestrates a multi-phase incremental update process. It reuses existing ingestion pipeline components where possible, focusing on processing only the changed portions of the codebase.
+The updater's core logic revolves around a robust, multi-stage process to determine the full impact of any code change. It no longer relies on a simple 1-hop call graph expansion, but instead uses the `[:INCLUDES]` relationships in the graph to find all files affected by a change.
 
-## 3. Key Design Principles
+## 3. The Incremental Update Pipeline
 
-*   **Incremental Processing**: Only processes files and symbols affected by recent Git commits.
-*   **"Mini-Index" Approach**: Constructs a small, in-memory `SymbolParser` (mini-index) containing only the relevant symbols and their 1-hop neighbors for efficient re-ingestion.
-*   **Reusability**: Maximizes reuse of existing `clangd_index_yaml_parser`, `clangd_symbol_nodes_builder`, `clangd_call_graph_builder`, and `code_graph_rag_generator` components.
-*   **Modularity**: Each phase of the update is handled by dedicated methods within the `GraphUpdater` class.
-*   **Git-Driven**: Relies on Git to accurately identify changed files between commits.
+The update process is divided into a sequence of phases orchestrated by the `GraphUpdater` class.
 
-## 4. Ingestion Pipeline Phases (Orchestrated by `GraphUpdater.run_update()`)
+### Phase 1: Identify Git Changes
 
-The update process is divided into five main phases:
+*   **Component**: `git_manager.GitManager`
+*   **Purpose**: To determine which source files (`.c`, `.h`, etc.) have been `added`, `modified`, or `deleted` between two Git commits. This provides the initial set of changed files.
 
-### Phase 1: Identify Changed Files (`_identify_changed_files`)
+### Phase 2: Analyze Header Impact via Graph Query
 
-*   **Purpose**: Determines which source files (`.c`, `.h`) have been added, modified, or deleted between a specified `old_commit` and `new_commit`.
-*   **Mechanism**: Utilizes `git_manager.GitManager.get_categorized_changed_files()` to obtain a consolidated list of `added`, `modified`, and `deleted` files. Renamed files are treated as a deletion of the original path and an addition of the new path.
-*   **Output**: A dictionary containing lists for `added`, `modified`, and `deleted` files.
+*   **Component**: `include_relation_provider.IncludeRelationProvider`
+*   **Purpose**: To find all source files that are indirectly affected by header file changes. This is the key to correctly handling cascading updates from macros or type definitions.
+*   **Mechanism**:
+    1.  It takes the list of `modified` and `deleted` headers from Phase 1.
+    2.  It queries the Neo4j graph, asking, "Find all `:FILE` nodes that have a transitive `[:INCLUDES]` relationship to any of these headers."
+    3.  The result is a set of all source files that depend on the changed headers.
+*   **Limitation**: This process is only effective if the modified header already exists as a node in the graph. If an "invisible header" is modified, this step will not find its dependents.
 
-### Phase 2: Purge Stale Graph Data (`_purge_stale_data`)
+### Phase 3: Purge Stale Graph Data
 
-*   **Purpose**: Removes outdated nodes and relationships from the Neo4j graph corresponding to the identified changes.
-*   **Mechanism**: 
-    *   Deletes `:FILE` nodes for files that were deleted or were the original path of a renamed file.
-    *   Deletes `:FUNCTION` and `:DATA_STRUCTURE` nodes that were defined in modified, deleted, or original renamed files using a `DETACH DELETE` to also remove their relationships.
-*   **Output**: A "hole" in the graph, ready for new data.
+*   **Purpose**: To remove all outdated information from the graph, creating a clean slate for the new data.
+*   **Mechanism**:
+    1.  First, it determines the complete set of **"dirty files"**: the union of textually changed files from Git (Phase 1) and impacted files found from the graph query (Phase 2).
+    2.  It then runs a series of targeted `DELETE` queries to remove all data originating from these files:
+        *   `DETACH DELETE` is used on `:FUNCTION` and `:DATA_STRUCTURE` nodes defined in the dirty/deleted files.
+        *   `[:INCLUDES]` relationships originating from dirty files are deleted.
+        *   `:FILE` nodes for deleted files are deleted, along with any newly-empty parent folders.
 
-### Phase 3: Build Self-Sufficient "Mini-Index" (`_build_mini_index`)
+### Phase 4: Re-ingest Dirty Files
 
-*   **Purpose**: Creates a focused, in-memory representation of the `clangd` index data relevant to the changes.
-*   **Mechanism**: 
-    *   Parses the entire new `clangd` index YAML file into a `full_symbol_parser` object.
-    *   Identifies "seed symbols" (symbols defined in `added` or `modified` files).
-    *   **Correctly expands this set to include 1-hop neighbors** by iterating through the `full_symbol_parser.symbols` data structure:
-        *   **Finds Callers**: For each seed symbol, it inspects its `references` list to find the `container_id` of any incoming calls.
-        *   **Finds Callees**: It iterates through all symbols in the parser, checking their `references` list to see if any are called by a seed symbol.
-    *   Creates a `mini_index_parser` (a subset `SymbolParser`) containing only these relevant symbols (seeds + neighbors).
-    *   Stores the initial `seed_symbol_ids` for use in the targeted RAG update in Phase 5.
-*   **Output**: A `SymbolParser` object representing the mini-index.
+*   **Purpose**: To surgically "patch" the graph with the new, updated information.
+*   **Mechanism**: This phase re-runs the core ingestion logic, but on a much smaller scope.
+    1.  **Parse Sources**: It calls the `CompilationManager` to parse *only the dirty files*, gathering their fresh include relationships and function spans.
+    2.  **Parse Symbols**: It parses the **entire new `clangd` index file** to get the most up-to-date information for all symbols.
+    3.  **Create Mini-Parser**: It creates a small, in-memory `SymbolParser` containing only the symbols whose definitions are located within one of the dirty files.
+    4.  **Re-run Processors**: It re-runs the standard `PathProcessor`, `SymbolProcessor`, `IncludeRelationProvider`, and `ClangdCallGraphExtractor` using the data from the mini-parser and the compilation manager. This repopulates the graph with the correct nodes and relationships for the updated files.
 
-### Phase 4: Re-run Ingestion Pipeline on Mini-Index (`_rerun_ingestion_pipeline`)
+### Phase 5: Targeted RAG Update
 
-*   **Purpose**: Re-ingests the data from the mini-index into Neo4j, patching the "hole" created in Phase 2.
-*   **Mechanism**: Reuses existing processors with idempotent `MERGE` operations:
-    *   `PathProcessor`: Rebuilds file and folder structure.
-    *   `SymbolProcessor`: Rebuilds symbol nodes and `:DEFINES` relationships.
-    *   `ClangdCallGraphExtractor`: Rebuilds `:CALLS` relationships.
+*   **Purpose**: To efficiently update AI-generated summaries and embeddings.
+*   **Component**: `code_graph_rag_generator.RagGenerator`
+*   **Mechanism**: It calls the `summarize_targeted_update()` method, providing the set of all function IDs from the "mini-parser" as the initial "seed" for the update. The RAG generator then intelligently re-summarizes these functions and their immediate neighbors, and rolls the changes up the file hierarchy.
 
-### Phase 5: RAG Summary Generation (`_update_summaries`)
+### Final Step: Update Commit Hash
 
-*   **Purpose**: Updates AI-generated summaries and vector embeddings for the affected parts of the graph.
-*   **Mechanism**: 
-    *   Initializes the `RagGenerator`.
-    *   Calls `rag_generator.summarize_targeted_update()` with the `seed_symbol_ids` saved from Phase 3.
-    *   **File Preparation for Span Provider**: For the span provider, the updater intelligently prepares the list of files to be scanned. Instead of just passing the initially changed files, it collects all unique source files (`.c` and `.h`) that are referenced by any symbol within the "Mini-Index" (which includes changed symbols and their 1-hop neighbors). This ensures that all relevant files, especially headers whose changes might affect multiple translation units, are re-scanned by the chosen span extraction strategy. This list is then passed to the `FunctionSpanProvider`'s `paths` argument.
-*   **Result-Driven Workflow Subtlety**: This triggers a highly efficient, multi-pass process within the `RagGenerator`. The key to its efficiency is that it's a result-driven workflow. Pass 1 (code-only summaries) returns the precise set of functions that were actually updated. This set is then used to define the scope for Pass 2 (context-aware summaries). Pass 2, in turn, returns the precise set of functions whose final `summary` property changed. This final set is then used to determine the exact files and folders that require their "roll-up" summaries to be recalculated. This prevents unnecessary processing of functions, files, or folders that were not affected by the initial code changes.
-
-## 5. Command-Line Arguments
-
-The script accepts the following arguments:
-
-*   `project_path`: Root path of the project being indexed.
-*   `index_file`: Path to the NEW `clangd` index YAML file for the target commit.
-*   `--old-commit`: The old commit hash or reference (defaults to `HEAD^`).
-*   `--new-commit`: The new commit hash or reference (defaults to `HEAD`).
-*   `--generate-summary`: Flag to enable RAG summary and embedding generation.
-*   `--llm-api`: The LLM API to use (`openai`, `deepseek`, `ollama`).
-*   `--num-local-workers`: Number of parallel workers for local LLMs/embedding models.
-*   `--num-remote-workers`: Number of parallel workers for remote LLM/embedding APIs.
-
-## 6. Dependencies
-
-*   `git_manager.py`: For Git operations.
-*   `neo4j_manager.py`: For Neo4j database interactions.
-*   `clangd_index_yaml_parser.py`: For parsing `clangd` index YAML files.
-*   `clangd_symbol_nodes_builder.py`: For ingesting file structure and symbol definitions.
-*   `clangd_call_graph_builder.py`: For ingesting call graph relationships.
-*   `function_span_provider.py`: For extracting function source code spans.
-*   `code_graph_rag_generator.py`: For AI-generated summaries and embeddings.
-*   `llm_client.py`: For LLM and embedding API interactions.
-*   `GitPython`: Python library for Git.
-*   `neo4j`: Python driver for Neo4j.
-*   `PyYAML`: For YAML parsing.
-*   `tqdm`: For progress bars.
+*   After all phases are complete, the `:PROJECT` node in the graph is updated with the new commit hash, bringing the database's recorded state in sync with the codebase.

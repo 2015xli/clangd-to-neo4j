@@ -27,7 +27,8 @@ from clangd_index_yaml_parser import SymbolParser
 from neo4j_manager import Neo4jManager
 from memory_debugger import Debugger
 from git_manager import GitManager
-from function_span_provider import FunctionSpanProvider
+from compilation_manager import CompilationManager
+from include_relation_provider import IncludeRelationProvider
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -42,12 +43,13 @@ class GraphBuilder:
         
         # State variables to be managed by the pipeline methods
         self.symbol_parser = None
-        self.span_provider = None
+        self.compilation_manager = None
 
     def build(self):
         """Runs the entire graph building pipeline."""
         try:
             self._pass_0_parse_symbols()
+            self._pass_3_parse_sources()
 
             with Neo4jManager() as neo4j_mgr:
                 if not neo4j_mgr.check_connection():
@@ -56,9 +58,10 @@ class GraphBuilder:
                 self._setup_database(neo4j_mgr)
                 self._pass_1_ingest_paths(neo4j_mgr)
                 self._pass_2_ingest_symbols(neo4j_mgr)
-                self._pass_3_ingest_call_graph(neo4j_mgr)
-                self._pass_4_cleanup_orphans(neo4j_mgr)
-                self._pass_5_generate_rag(neo4j_mgr)
+                self._pass_4_ingest_includes(neo4j_mgr)
+                self._pass_5_ingest_call_graph(neo4j_mgr)
+                self._pass_6_cleanup_orphans(neo4j_mgr)
+                self._pass_7_generate_rag(neo4j_mgr)
 
             logger.info("\n✅ All passes complete. Code graph ingestion finished.")
             return 0
@@ -110,71 +113,78 @@ class GraphBuilder:
         gc.collect()
         logger.info("--- Finished Pass 2 ---")
 
-    def _pass_3_ingest_call_graph(self, neo4j_mgr):
-        logger.info("\n--- Starting Pass 3: Ingesting Call Graph ---")
+    def _pass_3_parse_sources(self):
+        logger.info("\n--- Starting Pass 3: Parsing Source Code ---")
+        self.compilation_manager = CompilationManager(
+            parser_type=self.args.source_parser,
+            project_path=self.args.project_path,
+            compile_commands_path=self.args.compile_commands
+        )
+        # The parse_folder method handles caching internally
+        self.compilation_manager.parse_folder(self.args.project_path)
+        logger.info("--- Finished Pass 3 ---")
+
+    def _pass_4_ingest_includes(self, neo4j_mgr):
+        logger.info("\n--- Starting Pass 4: Ingesting Include Relations ---")
+        include_provider = IncludeRelationProvider(neo4j_mgr, self.args.project_path)
+        include_provider.ingest_include_relations(self.compilation_manager)
+        del include_provider
+        gc.collect()
+        logger.info("--- Finished Pass 4 ---")
+
+    def _pass_5_ingest_call_graph(self, neo4j_mgr):
+        logger.info("\n--- Starting Pass 5: Ingesting Call Graph ---")
+        # TODO: This pass needs to be fully refactored to use CompilationManager
+        # The ClangdCallGraphExtractorWithoutContainer class will need to be updated
+        # to get span data from the manager instead of an enriched SymbolParser object.
         if self.symbol_parser.has_container_field:
             extractor = ClangdCallGraphExtractorWithContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
             logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
         else:
             logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-            self.span_provider = FunctionSpanProvider(
-                symbol_parser=self.symbol_parser,
-                project_path=self.args.project_path,
-                paths=[self.args.project_path],
-                log_batch_size=self.args.log_batch_size,
-                extractor_type=self.args.span_extractor,
-                compile_commands_path=self.args.compile_commands
-            )
-            extractor = ClangdCallGraphExtractorWithoutContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
+            # This is a temporary adapter step. The extractor will need to be refactored.
+            from function_span_provider import FunctionSpanProvider
+            span_provider = FunctionSpanProvider(self.symbol_parser, self.compilation_manager)
+            extractor = ClangdCallGraphExtractorWithoutContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size, span_provider)
         
         call_relations = extractor.extract_call_relationships()
         extractor.ingest_call_relations(call_relations, neo4j_mgr=neo4j_mgr)
         del extractor, call_relations
         gc.collect()
-        logger.info("--- Finished Pass 3 ---")
+        logger.info("--- Finished Pass 5 ---")
 
-    def _pass_4_cleanup_orphans(self, neo4j_mgr):
+    def _pass_6_cleanup_orphans(self, neo4j_mgr):
         if not self.args.keep_orphans:
-            logger.info("\n--- Starting Pass 4: Cleaning up Orphan Nodes ---")
+            logger.info("\n--- Starting Pass 6: Cleaning up Orphan Nodes ---")
             deleted_nodes_count = neo4j_mgr.cleanup_orphan_nodes()
             logger.info(f"Removed {deleted_nodes_count} orphan nodes.")
-            logger.info("--- Finished Pass 4 ---")
+            logger.info("--- Finished Pass 6 ---")
         else:
-            logger.info("\n--- Skipping Pass 4: Keeping orphan nodes as requested ---")
+            logger.info("\n--- Skipping Pass 6: Keeping orphan nodes as requested ---")
 
-    def _pass_5_generate_rag(self, neo4j_mgr):
+    def _pass_7_generate_rag(self, neo4j_mgr):
         if not self.args.generate_summary:
             return
 
-        logger.info("\n--- Starting Pass 5: Generating Summaries and Embeddings ---")
+        logger.info("\n--- Starting Pass 7: Generating Summaries and Embeddings ---")
         from code_graph_rag_generator import RagGenerator
         from llm_client import get_llm_client, get_embedding_client
-
-        if self.span_provider is None:
-            logger.info("Creating new FunctionSpanProvider for summary generation.")
-            self.span_provider = FunctionSpanProvider(
-                symbol_parser=self.symbol_parser,
-                project_path=self.args.project_path,
-                paths=[self.args.project_path],
-                log_batch_size=self.args.log_batch_size,
-                extractor_type=self.args.span_extractor,
-                compile_commands_path=self.args.compile_commands
-            )
-        else:
-            logger.info("Reusing FunctionSpanProvider created in Pass 3.")
-
-        # The Span Provider has now cached all necessary data and nulled its own
-        # reference to the symbol_parser. It's now safe to delete the main one.
-        del self.symbol_parser
-        gc.collect()
 
         llm_client = get_llm_client(self.args.llm_api)
         embedding_client = get_embedding_client(self.args.llm_api)
 
+        # TODO: Refactor RagGenerator to accept CompilationManager directly
+        from function_span_provider import FunctionSpanProvider
+        span_provider = FunctionSpanProvider(self.symbol_parser, self.compilation_manager)
+
+        # The symbol_parser is large; delete it before the memory-intensive RAG process
+        del self.symbol_parser
+        gc.collect()
+
         rag_generator = RagGenerator(
             neo4j_mgr=neo4j_mgr,
             project_path=self.args.project_path,
-            span_provider=self.span_provider,
+            span_provider=span_provider, # Pass the adapter
             llm_client=llm_client,
             embedding_client=embedding_client,
             num_local_workers=self.args.num_local_workers,
@@ -182,7 +192,7 @@ class GraphBuilder:
         )
         rag_generator.summarize_code_graph()
         neo4j_mgr.create_vector_indices()
-        logger.info("--- Finished Pass 5 ---")
+        logger.info("--- Finished Pass 7 ---")
 
 import input_params
 from pathlib import Path
@@ -197,7 +207,7 @@ def main():
     input_params.add_batching_args(parser)
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
-    input_params.add_span_extractor_args(parser)
+    input_params.add_source_parser_args(parser)
     input_params.add_logistic_args(parser) # For --debug-memory
     
     args = parser.parse_args()

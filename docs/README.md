@@ -23,10 +23,11 @@ These documents detail the core modules responsible for each major stage of the 
 
 -   **[summary_clangd_index_yaml_parser.md](./summary_clangd_index_yaml_parser.md)**: Explains the high-performance, parallel parsing of the raw `clangd` index file.
 -   **[summary_clangd_symbol_nodes_builder.md](./summary_clangd_symbol_nodes_builder.md)**: Details the creation of the graph's structural backbone (files, folders, symbols).
+-   **[summary_compilation_manager.md](./summary_compilation_manager.md)**: Explains the high-level orchestration of source code parsing, caching, and strategy selection.
+-   **[summary_compilation_parser.md](./summary_compilation_parser.md)**: Details the low-level parsing logic, supporting both `tree-sitter` and `clang.cindex` strategies for extracting function spans and include relations.
+-   **[summary_include_relation_provider.md](./summary_include_relation_provider.md)**: Covers the logic for ingesting and querying file include relationships to correctly handle header file dependencies.
 -   **[summary_clangd_call_graph_builder.md](./summary_clangd_call_graph_builder.md)**: Covers the adaptive strategies for constructing the function call graph.
 -   **[summary_code_graph_rag_generator.md](./summary_code_graph_rag_generator.md)**: Describes the multi-pass process for generating AI summaries and embeddings.
--   **[summary_function_span_provider.md](./summary_function_span_provider.md)**: Explains how function source code locations are acquired and cached.
--   **[summary_function_span_extractor.md](./summary_function_span_extractor.md)**: Details the low-level parsing logic, supporting both `tree-sitter` and `clang.cindex` strategies.
 
 ### Supporting Modules
 

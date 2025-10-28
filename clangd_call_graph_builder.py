@@ -16,7 +16,7 @@ import math
 from tqdm import tqdm
 
 import input_params
-from function_span_extractor import SpanExtractor
+from compilation_manager import CompilationManager
 from clangd_index_yaml_parser import (
     SymbolParser, Symbol, Location, Reference, FunctionSpan, RelativeLocation, CallRelation
 )
@@ -233,26 +233,19 @@ def main():
     """Main function to demonstrate usage."""
     parser = argparse.ArgumentParser(description='Extract call graph from clangd index YAML')
 
-    # Add arguments specific to this script
-    # 'index_file', type=Path, help='Path to clangd index YAML file (or a .pkl cache file).'
-    # 'project_path', type=Path, help='Path to a project directory to scan for function spans.'
     input_params.add_core_input_args(parser)
-    
-    # Add argument groups from the centralized module
     input_params.add_worker_args(parser)
     input_params.add_batching_args(parser)
     input_params.add_logistic_args(parser)
-    input_params.add_span_extractor_args(parser)
+    input_params.add_source_parser_args(parser)
 
     args = parser.parse_args()
 
-    # Resolve paths and convert back to strings
     args.index_file = str(args.index_file.resolve())
     args.project_path = str(args.project_path.resolve())
 
-    # Set default for ingest_batch_size if not provided
     if args.ingest_batch_size is None:
-        args.ingest_batch_size = args.cypher_tx_size # A sensible default for this script
+        args.ingest_batch_size = args.cypher_tx_size
     
     # --- Phase 0: Load, Parse, and Link Symbols ---
     logger.info("\n--- Starting Phase 0: Loading, Parsing, and Linking Symbols ---")
@@ -263,32 +256,39 @@ def main():
     symbol_parser.parse(num_workers=args.num_parse_workers)
     logger.info("--- Finished Phase 0 ---")
 
-    # 2. Create extractor based on available features
+    # --- NEW: Phase 1: Parse Source Code (for spans) ---
+    logger.info("\n--- Starting Phase 1: Parsing Source Code for Spans ---")
+    compilation_manager = CompilationManager(
+        parser_type=args.source_parser,
+        project_path=args.project_path,
+        compile_commands_path=args.compile_commands
+    )
+    compilation_manager.parse_folder(args.project_path)
+    logger.info("--- Finished Phase 1 ---")
+
+    # --- NEW: Phase 2: Create FunctionSpanProvider adapter ---
+    from function_span_provider import FunctionSpanProvider
+    logger.info("\n--- Starting Phase 2: Enriching Symbols with Spans ---")
+    FunctionSpanProvider(symbol_parser=symbol_parser, compilation_manager=compilation_manager)
+    logger.info("--- Finished Phase 2 ---")
+
+    # --- Phase 3: Create extractor based on available features ---
+    logger.info("\n--- Starting Phase 3: Creating Call Graph Extractor ---")
     if symbol_parser.has_container_field:
         extractor = ClangdCallGraphExtractorWithContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
     else:
         extractor = ClangdCallGraphExtractorWithoutContainer(symbol_parser, args.log_batch_size, args.ingest_batch_size)
         logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-        from function_span_provider import FunctionSpanProvider
-        if os.path.isdir(args.project_path):
-            # The provider runs the chosen strategy and enriches the symbol_parser object in place.
-            FunctionSpanProvider(
-                symbol_parser=symbol_parser,
-                project_path=args.project_path,
-                paths=[args.project_path],
-                log_batch_size=args.log_batch_size,
-                extractor_type=args.span_extractor,
-                compile_commands_path=args.compile_commands
-            )
-        else:
-            logger.error(f"Project path for span extraction not found or not a directory: {args.project_path}")
-            return
-    
-    # 3. Extract call relationships
+    logger.info("--- Finished Phase 3 ---")
+
+    # --- Phase 4: Extract call relationships ---
+    logger.info("\n--- Starting Phase 4: Extracting Call Relationships ---")
     call_relations = extractor.extract_call_relationships()
+    logger.info("--- Finished Phase 4 ---")
     
-    # 4. Ingest or write to file
+    # --- Phase 5: Ingest or write to file ---
+    logger.info("\n--- Starting Phase 5: Ingesting/Writing Call Relations ---")
     if args.ingest:
         with Neo4jManager() as neo4j_mgr:
             if neo4j_mgr.check_connection():
@@ -296,14 +296,15 @@ def main():
                     return
                 extractor.ingest_call_relations(call_relations, neo4j_mgr=neo4j_mgr)
     else:
-        # When not ingesting, write to a default CQL file.
-        # The ingest_call_relations method handles this logic.
         extractor.ingest_call_relations(call_relations, neo4j_mgr=None)
+    logger.info("--- Finished Phase 5 ---")
     
-    # 5. Generate statistics
+    # --- Phase 6: Generate statistics ---
     if args.stats:
+        logger.info("\n--- Starting Phase 6: Generating Statistics ---")
         stats = extractor.generate_statistics(call_relations)
         logger.info(stats)
+        logger.info("--- Finished Phase 6 ---")
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()

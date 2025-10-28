@@ -24,34 +24,20 @@ from llm_client import get_llm_client, get_embedding_client
 
 logger = logging.getLogger(__name__)
 
+from compilation_manager import CompilationManager
+from include_relation_provider import IncludeRelationProvider
+
+logger = logging.getLogger(__name__)
+
 class GraphUpdater:
-    """Manages the incremental update process."""
+    """Manages the incremental update process using dependency analysis."""
 
-    def __init__(self, project_path: str, index_file: str, old_commit: str, new_commit: str, num_parse_workers: int,
-                 log_batch_size: int, ingest_batch_size: int, cypher_tx_size: int, defines_generation: str,
-                 span_extractor: str, compile_commands: Optional[str],
-                 generate_summary: bool, llm_api: str, num_local_workers: int, num_remote_workers: int):
-        self.project_path = project_path
-        self.index_file = index_file
-        self.old_commit = old_commit
-        self.new_commit = new_commit
-        self.num_parse_workers = num_parse_workers
-        self.log_batch_size = log_batch_size
-        self.ingest_batch_size = ingest_batch_size
-        self.cypher_tx_size = cypher_tx_size
-        self.defines_generation = defines_generation
-        self.span_extractor = span_extractor
-        self.compile_commands = compile_commands
+    def __init__(self, args):
+        self.args = args
+        self.project_path = args.project_path
         self.neo4j_mgr = None
-        self.generate_summary = generate_summary
-        self.llm_api = llm_api
-        self.num_local_workers = num_local_workers
-        self.num_remote_workers = num_remote_workers
-        self.changed_files: Dict[str, List[str]] = {} # To be populated in run_update
-        self.seed_symbol_ids: Set[str] = set() # To be populated in _build_mini_index
-        self.function_span_provider: Optional[FunctionSpanProvider] = None # To be populated in _build_mini_index
 
-        logger.info(f"Initializing graph update for project: {project_path}")
+        logger.info(f"Initializing graph update for project: {self.project_path}")
         try:
             self.git_manager = GitManager(self.project_path)
         except InvalidGitRepositoryError:
@@ -59,280 +45,176 @@ class GraphUpdater:
             sys.exit(1)
 
     def update(self):
-
+        """Runs the entire incremental update pipeline."""
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection():
                 return 1
-
             self.neo4j_mgr = neo4j_mgr
 
-            # Verify that the project path in the graph matches the one provided
             if not self.neo4j_mgr.verify_project_path(self.project_path):
                 sys.exit(1)
 
-            # Determine the commit range for the update.
-            if self.new_commit is None:
-                self.new_commit = self.git_manager.get_head_commit_hash()
-                logger.info(f"No new-commit specified. Using current HEAD: {self.new_commit}")
-
-            if self.old_commit is None:
-                self.old_commit = self.neo4j_mgr.get_graph_commit_hash(self.project_path)
-                if not self.old_commit:
-                    logger.error("No old-commit specified and no commit hash found in the database. Cannot determine update range.")
-                    sys.exit(1)
-                logger.info(f"No old-commit specified. Using last processed commit from graph: {self.old_commit}")
-
-            if self.old_commit == self.new_commit:
+            # 1. Determine commit range
+            old_commit, new_commit = self._resolve_commit_range()
+            if old_commit == new_commit:
                 logger.info("Database is already up-to-date. No update needed.")
                 return
 
-            logger.info(f"Processing changes from {self.old_commit} to {self.new_commit}")
-            self.update_with_neo4jmanager()
+            logger.info(f"Processing changes from {old_commit} to {new_commit}")
 
+            # 2. Identify all files that need to be re-processed
+            git_changes = self._identify_git_changes(old_commit, new_commit)
+            impacted_from_graph = self._analyze_impact_from_graph(git_changes)
+            
+            dirty_files = set(git_changes['added'] + git_changes['modified']) | impacted_from_graph
+            if not dirty_files and not git_changes['deleted']:
+                logger.info("No relevant source file changes detected. Update complete.")
+                self.neo4j_mgr.update_project_node(self.project_path, {'commit_hash': new_commit})
+                return
 
-    def update_with_neo4jmanager(self):
+            logger.info(f"Found {len(dirty_files)} files to re-ingest and {len(git_changes['deleted'])} files to delete.")
 
-        """Executes the full incremental update pipeline."""
-        logger.info("\n--- Starting Incremental Update ---")
-        # Phase 1: Identify Changed Files
-        changed_files = self._identify_changed_files()
-        logger.info(f"Changed files between {self.old_commit} and {self.new_commit}:\n {changed_files} ")
-        
-        if not any(changed_files.values()):
-            logger.info("No relevant source file changes detected. Update complete.")
-            return
-        self.changed_files = changed_files
-        
-        # Phase 2: Purge Stale Graph Data
-        self._purge_stale_data(self.changed_files)
+            # 3. Purge all affected data from the graph
+            self._purge_stale_graph_data(dirty_files, git_changes['deleted'])
 
-        # Phase 3: Build Self-Sufficient "Mini-Index"
-        mini_index_parser = self._build_mini_index(self.changed_files)
+            # 4. Re-ingest data for dirty files
+            mini_symbol_parser = self._reingest_dirty_files(dirty_files)
 
-        # Phase 4: Re-run Ingestion Pipeline on Mini-Index
-        self._rerun_ingestion_pipeline(mini_index_parser)
+            # 5. Regenerate summary for dirty files impacted nodes (functions and folders)
+            self._regenerate_summary(mini_symbol_parser, git_changes, impacted_from_graph)
 
-        # Phase 5: RAG Summary Generation
-        self._update_summaries(mini_index_parser, self.changed_files)
-
-        # Final Step: Update the commit hash in the graph to the new version
-        self.neo4j_mgr.update_project_node(self.project_path, {'commit_hash': self.new_commit})
-        logger.info(f"Successfully updated PROJECT node to commit: {self.new_commit}")
+            # 6. Update the commit hash in the graph to the new version
+            self.neo4j_mgr.update_project_node(self.project_path, {'commit_hash': new_commit})
+            logger.info(f"Successfully updated PROJECT node to commit: {new_commit}")
 
         logger.info("\n✅ Incremental update complete.")
 
-    def _identify_changed_files(self) -> dict:
-        """Phase 1: Identifies added, modified, and deleted files using Git, treating renames as delete+add."""
-        logger.info("\n--- Phase 1: Identifying Changed Files ---")
-        changed_files = self.git_manager.get_categorized_changed_files(self.old_commit, self.new_commit)
-        logger.info("Found changed files:")
-        if changed_files['added']:
-            logger.info(f"  Added: {len(changed_files['added'])}")
-        if changed_files['modified']:
-            logger.info(f"  Modified: {len(changed_files['modified'])}")
-        if changed_files['deleted']:
-            logger.info(f"  Deleted: {len(changed_files['deleted'])}")
-        logger.info("Phase 1 complete.")
+    def _resolve_commit_range(self) -> (str, str):
+        new_commit = self.args.new_commit or self.git_manager.get_head_commit_hash()
+        old_commit = self.args.old_commit or self.neo4j_mgr.get_graph_commit_hash(self.project_path)
+        
+        if not old_commit:
+            logger.error("No old-commit specified and no commit hash found in the database. Cannot determine update range.")
+            sys.exit(1)
+            
+        logger.info(f"Update range resolved: {old_commit} -> {new_commit}")
+        return old_commit, new_commit
+
+    def _identify_git_changes(self, old_commit: str, new_commit: str) -> Dict[str, List[str]]:
+        logger.info("\n--- Phase 1: Identifying Changed Files via Git ---")
+        changed_files = self.git_manager.get_categorized_changed_files(old_commit, new_commit)
+        logger.info(f"Found: {len(changed_files['added'])} added, {len(changed_files['modified'])} modified, {len(changed_files['deleted'])} deleted.")
         return changed_files
 
-    def _purge_stale_data(self, changed_files: dict):
-        """Phase 2: Removes outdated data from the graph."""
-        logger.info("\n--- Phase 2: Purging Stale Graph Data ---")
-        
-        # The 'deleted' list from GitManager already includes the original paths of renamed files.
-        files_to_delete = changed_files['deleted']
-        if files_to_delete:
-            logger.info(f"Deleting {len(files_to_delete)} FILE nodes from the graph.")
-            self.neo4j_mgr.purge_files(files_to_delete)
+    def _analyze_impact_from_graph(self, git_changes: Dict[str, List[str]]) -> Set[str]:
+        logger.info("\n--- Phase 2: Analyzing Header Impact via Graph Query ---")
+        headers_to_check = [h for h in git_changes['modified'] if h.endswith('.h')] + \
+                           [h for h in git_changes['deleted'] if h.endswith('.h')]
 
-        # Files whose defined symbols need to be purged and re-ingested.
-        # This includes modified files and the original paths of renamed/deleted files.
-        files_to_purge_symbols_from = (
-            changed_files['modified'] + 
-            changed_files['deleted']
-        )
+        if not headers_to_check:
+            logger.info("No modified or deleted headers to analyze. Skipping graph query.")
+            return set()
+
+        include_provider = IncludeRelationProvider(self.neo4j_mgr, self.project_path)
+        impacted_files = include_provider.get_impacted_files_from_graph(headers_to_check)
+        return impacted_files
+
+    def _purge_stale_graph_data(self, dirty_files: Set[str], deleted_files: List[str]):
+        logger.info("\n--- Phase 3: Purging Stale Graph Data ---")
+        files_to_purge_symbols_from = list(dirty_files | set(deleted_files))
+        
         if files_to_purge_symbols_from:
-            logger.info(f"Purging symbols from {len(files_to_purge_symbols_from)} changed/deleted files.")
+            logger.info(f"Purging symbols and includes from {len(files_to_purge_symbols_from)} files.")
             self.neo4j_mgr.purge_symbols_defined_in_files(files_to_purge_symbols_from)
+            self.neo4j_mgr.purge_include_relations_from_files(files_to_purge_symbols_from)
 
-        logger.info("Phase 2 complete.")
+        if deleted_files:
+            logger.info(f"Deleting {len(deleted_files)} FILE nodes.")
+            self.neo4j_mgr.purge_files(deleted_files)
 
-    def _build_mini_index(self, changed_files: dict) -> Optional[SymbolParser]:
-        """Phase 3: Builds a self-sufficient, in-memory index for the changed data."""
-        logger.info("\n--- Phase 3: Building Self-Sufficient \"Mini-Index\" ---")
-        
-        # Step 1: Parse the Full New Index
-        logger.info(f"Parsing new clangd index file: {self.index_file}")
-        full_symbol_parser = SymbolParser(
-            index_file_path=self.index_file,
-            log_batch_size=self.log_batch_size
-        )
-        full_symbol_parser.parse(num_workers=self.num_parse_workers) # Assuming default workers for now
+    def _reingest_dirty_files(self, dirty_files: Set[str]): 
+        logger.info(f"\n--- Phase 4: Re-ingesting {len(dirty_files)} Dirty Files ---")
 
-        # Step 2: Identify Seed Symbols
-        logger.info("Identifying seed symbols from changed files...")
-        seed_symbol_ids = set()
-        files_to_scan = (
-            changed_files.get('added', []) + 
-            changed_files.get('modified', [])
-        )
-        
-        # Convert relative paths to file URIs for matching
-        # Note: This assumes paths from git are relative to the project root.
-        files_to_scan_uris = {f"file://{os.path.abspath(os.path.join(self.project_path, f))}" for f in files_to_scan}
-
-        for symbol in full_symbol_parser.symbols.values():
-            if symbol.definition and symbol.definition.file_uri in files_to_scan_uris:
-                seed_symbol_ids.add(symbol.id)
-        self.seed_symbol_ids = seed_symbol_ids # Store for later use in RAG update
-        logger.info(f"Found {len(self.seed_symbol_ids)} seed symbols.")
-
-        # Step 3: Grow to 1-Hop Neighbors
-        logger.info("Finding 1-hop neighbors (callers and callees)...")
-        final_symbol_ids = set(seed_symbol_ids)
-
-        # Find Incoming Callers (functions that call the seed symbols)
-        for seed_id in seed_symbol_ids:
-            if seed_id in full_symbol_parser.symbols:
-                callee_symbol = full_symbol_parser.symbols[seed_id]
-                for ref in callee_symbol.references:
-                    if ref.container_id and ref.container_id != '0000000000000000':
-                        final_symbol_ids.add(ref.container_id)
-
-        # Find Outgoing Callees (functions called by the seed symbols)
-        for callee_symbol in full_symbol_parser.symbols.values():
-            for ref in callee_symbol.references:
-                if ref.container_id in seed_symbol_ids:
-                    final_symbol_ids.add(callee_symbol.id)
-                    break  # Optimization: move to the next symbol once one link is found
-        
-        logger.info(f"Total symbols in mini-index (seeds + neighbors): {len(final_symbol_ids)}")
-
-        # Step 4: Create and Populate the Mini-Index
-        logger.info("Creating the mini-index from the full symbol table...")
-        mini_index_parser = full_symbol_parser.create_subset(final_symbol_ids)
-        
-        # The deletion is actually unnecessary because full_symbol_parser is local variable. But we just want to force gc to reclaim it.
-        del full_symbol_parser
-        gc.collect()
-
-        logger.info("Phase 3 complete.")
-        return mini_index_parser
-
-    def _rerun_ingestion_pipeline(self, mini_index_parser: Optional[SymbolParser]):
-        """Phase 4: Reuses existing components to ingest the mini-index."""
-        logger.info("\n--- Phase 4: Re-running Ingestion Pipeline on Mini-Index ---")
-        if not mini_index_parser or not mini_index_parser.symbols:
-            logger.info("Mini-index is empty. Nothing to ingest. Skipping Phase 4.")
+        if not dirty_files:
+            logger.info(" No Dirty Files.")
             return
-
-        path_manager = PathManager(self.project_path)
-
-        # Step 4a: Rebuild File Structure
-        logger.info("Step 4a: Rebuilding file structure...")
-        path_processor = PathProcessor(path_manager, self.neo4j_mgr, self.log_batch_size, self.ingest_batch_size)
-        path_processor.ingest_paths(mini_index_parser.symbols)
-        del path_processor
-
-        # Step 4b: Rebuild Symbols and :DEFINES
-        logger.info("Step 4b: Rebuilding symbols and DEFINES relationships...")
-        symbol_processor = SymbolProcessor(
-            path_manager,
-            log_batch_size=self.log_batch_size,
-            ingest_batch_size=self.ingest_batch_size,
-            cypher_tx_size=self.cypher_tx_size
+        
+        # Step 4a: Parse all dirty files to get their new state
+        comp_manager = CompilationManager(
+            parser_type=self.args.source_parser,
+            project_path=self.project_path,
+            compile_commands_path=self.args.compile_commands
         )
-        # Use the configured defines generation strategy 
-        symbol_processor.ingest_symbols_and_relationships(mini_index_parser.symbols, self.neo4j_mgr, self.defines_generation)
-        del symbol_processor
+        comp_manager.parse_files(list(dirty_files))
 
-        # Step 4c: Rebuild Call Graph
-        logger.info("Step 4c: Rebuilding call graph...")
-        if mini_index_parser.has_container_field:
-            extractor = ClangdCallGraphExtractorWithContainer(mini_index_parser, self.log_batch_size, self.ingest_batch_size)
-            logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
+        # Step 4b: Parse the new clangd index to get up-to-date symbol info
+        # This is necessary because git changes don't tell us about symbol ID changes
+        full_symbol_parser = SymbolParser(self.args.index_file)
+        full_symbol_parser.parse(self.args.num_parse_workers)
+
+        # Create a "mini-parser" containing only symbols from our dirty files
+        dirty_file_uris = {f"file://{os.path.abspath(os.path.join(self.project_path, f))}" for f in dirty_files}
+        dirty_symbol_ids = {
+            s.id for s in full_symbol_parser.symbols.values() 
+            if s.definition and s.definition.file_uri in dirty_file_uris
+        }
+        mini_symbol_parser = full_symbol_parser.create_subset(dirty_symbol_ids)
+
+        # Step 4c: Re-ingest data using the new information
+        path_manager = PathManager(self.project_path)
+        path_processor = PathProcessor(path_manager, self.neo4j_mgr, self.args.log_batch_size, self.args.ingest_batch_size)
+        path_processor.ingest_paths(mini_symbol_parser.symbols)
+
+        symbol_processor = SymbolProcessor(path_manager, self.args.log_batch_size, self.args.ingest_batch_size, self.args.cypher_tx_size)
+        symbol_processor.ingest_symbols_and_relationships(mini_symbol_parser.symbols, self.neo4j_mgr, self.args.defines_generation)
+
+        include_provider = IncludeRelationProvider(self.neo4j_mgr, self.project_path)
+        include_provider.ingest_include_relations(comp_manager, self.args.ingest_batch_size)
+
+        # Step 4d: Re-ingest call graph for the dirty symbols
+        logger.info("Step 4d: Rebuilding call graph...")
+        self.span_provider = FunctionSpanProvider(mini_symbol_parser, comp_manager)
+        if mini_symbol_parser.has_container_field:
+            extractor = ClangdCallGraphExtractorWithContainer(mini_symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         else:
-            logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-            # Spans are needed for the old format. Get spans for added/modified files.
-            self._get_function_span_provider(mini_index_parser)
-            extractor = ClangdCallGraphExtractorWithoutContainer(mini_index_parser, self.log_batch_size, self.ingest_batch_size)
-
+            extractor = ClangdCallGraphExtractorWithoutContainer(mini_symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size, self.span_provider)
+        
         call_relations = extractor.extract_call_relationships()
         extractor.ingest_call_relations(call_relations, neo4j_mgr=self.neo4j_mgr)
-        del extractor, call_relations
 
-        gc.collect()
-        logger.info("Phase 4 complete.")
+        logger.info("--- Re-ingestion complete ---")
+        return mini_symbol_parser
 
-    def _update_summaries(self, mini_index_parser, changed_files):
-        """Phase 5: Updates AI-generated summaries and embeddings."""
-        logger.info("\n--- Phase 5: Updating RAG Summaries and Embeddings ---")
-        if not self.generate_summary:
-            logger.info("RAG summary generation not requested. Skipping Phase 5.")
+    def _regenerate_summary(self, mini_symbol_parser: SymbolParser, git_changes: Dict[str, List[str]], impacted_from_graph: Set[str]):
+        # Step 5: Run targeted RAG update
+        if not self.args.generate_summary:
             return
 
-        if not mini_index_parser or not mini_index_parser.symbols:
-            logger.info("Mini-index is empty. No summaries to update. Skipping Phase 5.")
-            return
+        logger.info("Step 5: Running targeted RAG update...")
 
-        logger.info("Initializing LLM and Embedding clients...")
-        llm_client = get_llm_client(self.llm_api)
-        embedding_client = get_embedding_client(self.llm_api)
-
-        if self.function_span_provider is None:
-            self.function_span_provider = self._get_function_span_provider(mini_index_parser)
-            # Once the span provider is created, the mini-index is no longer needed for RAG generation
-            del mini_index_parser
-            gc.collect()
-
+        llm_client = get_llm_client(self.args.llm_api)
+        embedding_client = get_embedding_client(self.args.llm_api)
         rag_generator = RagGenerator(
             neo4j_mgr=self.neo4j_mgr,
             project_path=self.project_path,
-            span_provider=self.function_span_provider,
+            span_provider=self.span_provider,
             llm_client=llm_client,
             embedding_client=embedding_client,
-            num_local_workers=self.num_local_workers,
-            num_remote_workers=self.num_remote_workers,
+            num_local_workers=self.args.num_local_workers,
+            num_remote_workers=self.args.num_remote_workers,
         )
+        # The seed symbols for the RAG update are all function symbols in our dirty set
+        rag_seed_ids = {s.id for s in mini_symbol_parser.functions.values()}
+        
+        # Construct the structurally_changed_files_for_rag dictionary
+        structurally_changed_files_for_rag = {
+            'added': git_changes['added'],
+            'modified': list(set(git_changes['modified']) | impacted_from_graph),
+            'deleted': git_changes['deleted']
+         }
+        rag_generator.summarize_targeted_update(rag_seed_ids, structurally_changed_files_for_rag)
 
-        if not self.seed_symbol_ids:
-            logger.info("No seed symbols found for RAG update. Skipping targeted update.")
-            return
-
-        logger.info(f"Using {len(self.seed_symbol_ids)} seed symbols for RAG update.")
-
-        rag_generator.summarize_targeted_update(self.seed_symbol_ids, self.changed_files)
-
-        logger.info("Phase 5 complete.")
-
-    def _get_function_span_provider(self, mini_index_parser: SymbolParser):
-        if self.function_span_provider:
-            return self.function_span_provider
-
-        # For the clang extractor, we need to re-parse all translation units (.c files)
-        # that are affected by the changes. The safest way to do this is to find all
-        # unique source files referenced by any symbol in our mini-index (which contains
-        # the changed symbols + their 1-hop neighbors).
-        logger.info("Determining files to re-scan based on mini-index...")
-        files_to_scan = set()
-        for symbol in mini_index_parser.symbols.values():
-            if symbol.definition:
-                # The file URI is already absolute, so we just need to convert it to a path
-                path = unquote(urlparse(symbol.definition.file_uri).path)
-                files_to_scan.add(path)
-
-        logger.info(f"Found {len(files_to_scan)} unique files referenced in the mini-index.")
-        abs_file_list = [os.path.abspath(f) for f in files_to_scan]
-
-        self.function_span_provider = FunctionSpanProvider(
-            symbol_parser=mini_index_parser,
-            project_path=self.project_path,
-            paths=abs_file_list, # Pass ALL files from the mini-index
-            log_batch_size=self.log_batch_size,
-            extractor_type=self.span_extractor,
-            compile_commands_path=self.compile_commands
-        )
-        return self.function_span_provider
+        logger.info("--- Summary regeneration complete ---")
         
 import input_params
 
@@ -348,7 +230,7 @@ def main():
     input_params.add_batching_args(parser)
     input_params.add_rag_args(parser)
     input_params.add_ingestion_strategy_args(parser)
-    input_params.add_span_extractor_args(parser)
+    input_params.add_source_parser_args(parser)
     # Set a different default for defines_generation for safety in updates
     parser.set_defaults(defines_generation='batched-parallel')
 
@@ -366,23 +248,7 @@ def main():
             default_workers = 2
         args.ingest_batch_size = args.cypher_tx_size * (args.num_parse_workers or default_workers)
 
-    updater = GraphUpdater(
-        project_path=args.project_path,
-        index_file=args.index_file,
-        old_commit=args.old_commit,
-        new_commit=args.new_commit,
-        num_parse_workers=args.num_parse_workers,
-        log_batch_size=args.log_batch_size,
-        ingest_batch_size=args.ingest_batch_size,
-        cypher_tx_size=args.cypher_tx_size,
-        defines_generation=args.defines_generation,
-        span_extractor=args.span_extractor,
-        compile_commands=args.compile_commands,
-        generate_summary=args.generate_summary,
-        llm_api=args.llm_api,
-        num_local_workers=args.num_local_workers,
-        num_remote_workers=args.num_remote_workers
-    )
+    updater = GraphUpdater(args)
     updater.update()
 
     return 0
