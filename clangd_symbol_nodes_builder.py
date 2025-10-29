@@ -18,6 +18,7 @@ from tqdm import tqdm
 import input_params
 # New imports from the common parser module
 from clangd_index_yaml_parser import SymbolParser, Symbol, Location
+from compilation_manager import CompilationManager
 from neo4j_manager import Neo4jManager
 
 logger = logging.getLogger(__name__)
@@ -71,9 +72,11 @@ class SymbolProcessor:
             if self.path_manager.is_within_project(abs_file_path):
                 symbol_data["path"] = self.path_manager.uri_to_relative_path(primary_location.file_uri)
             else:
+                # For out-of-project symbol, skip it.
+                return None
                 # For out-of-project symbols, store the absolute path
-                symbol_data["path"] = abs_file_path
-            symbol_data["location"] = [primary_location.start_line, primary_location.start_column]
+                # symbol_data["path"] = abs_file_path
+            symbol_data["name_location"] = [primary_location.start_line, primary_location.start_column]
 
         # Add function-specific properties
         if sym.kind == "Function":
@@ -82,6 +85,14 @@ class SymbolProcessor:
                 "return_type": sym.return_type,
                 "type": sym.type,
             })
+            # If the symbol has been enriched with body_location, add it.
+            if hasattr(sym, 'body_location') and sym.body_location:
+                symbol_data["body_location"] = [
+                    sym.body_location.start_line,
+                    sym.body_location.start_column,
+                    sym.body_location.end_line,
+                    sym.body_location.end_column
+                ]
             
         # Set file_path for creating DEFINES relationships (in-project only)
         if sym.definition:
@@ -375,25 +386,52 @@ class PathProcessor:
     def __init__(self, path_manager: PathManager, neo4j_mgr: Neo4jManager, log_batch_size: int = 1000, ingest_batch_size: int = 1000):
         self.path_manager, self.neo4j_mgr, self.log_batch_size, self.ingest_batch_size = path_manager, neo4j_mgr, log_batch_size, ingest_batch_size
 
-    def _discover_paths(self, symbols: Dict[str, Symbol]) -> Tuple[set, set]:
-        project_files, project_folders = set(), set()
-        logger.info("Discovering project file structure...")
-        for sym in tqdm(symbols.values(), desc="Discovering paths"):
+    def _discover_paths_from_symbols(self, symbols: Dict[str, Symbol]) -> set:
+        project_files = set()
+        logger.info("Discovering file paths from symbols...")
+        for sym in tqdm(symbols.values(), desc="Discovering paths from symbols"):
             for loc in [sym.definition, sym.declaration]:
                 if loc and urlparse(loc.file_uri).scheme == 'file':
                     abs_path = unquote(urlparse(loc.file_uri).path)
                     if self.path_manager.is_within_project(abs_path):
                         relative_path = self.path_manager.uri_to_relative_path(loc.file_uri)
                         project_files.add(relative_path)
-                        parent = Path(relative_path).parent
-                        while str(parent) != '.' and str(parent) != '/':
-                            project_folders.add(str(parent))
-                            parent = parent.parent
-        logger.info(f"Discovered {len(project_files)} files and {len(project_folders)} folders.")
-        return project_files, project_folders
+        logger.info(f"Discovered {len(project_files)} unique files from symbols.")
+        return project_files
 
-    def ingest_paths(self, symbols: Dict[str, Symbol]):
-        project_files, project_folders = self._discover_paths(symbols)
+    def _discover_paths_from_includes(self, compilation_manager: CompilationManager) -> set:
+        """Discovers all unique file paths from include relations."""
+        include_files = set()
+        logger.info("Discovering file paths from include relations...")
+        include_relations = compilation_manager.get_include_relations()
+        for including_abs, included_abs in tqdm(include_relations, desc="Discovering paths from includes"):
+            for abs_path in [including_abs, included_abs]:
+                if self.path_manager.is_within_project(abs_path):
+                    # Use os.path.relpath for consistency with include_relation_provider
+                    relative_path = os.path.relpath(abs_path, self.path_manager.project_path)
+                    include_files.add(relative_path)
+        logger.info(f"Discovered {len(include_files)} unique files from includes.")
+        return include_files
+
+    def _get_folders_from_files(self, project_files: set) -> set:
+        """Extracts all unique parent folder paths from a set of file paths."""
+        project_folders = set()
+        for file_path in project_files:
+            parent = Path(file_path).parent
+            while str(parent) != '.' and str(parent) != '/':
+                project_folders.add(str(parent))
+                parent = parent.parent
+        return project_folders
+
+    def ingest_paths(self, symbols: Dict[str, Symbol], compilation_manager: CompilationManager):
+        logger.info("Consolidating all unique file and folder paths...")
+        paths_from_symbols = self._discover_paths_from_symbols(symbols)
+        paths_from_includes = self._discover_paths_from_includes(compilation_manager)
+        
+        project_files = paths_from_symbols.union(paths_from_includes)
+        project_folders = self._get_folders_from_files(project_files)
+        
+        logger.info(f"Consolidated to {len(project_files)} unique project files and {len(project_folders)} unique project folders.")
         
         folder_data_list = []
         sorted_folders = sorted(list(project_folders), key=lambda p: len(Path(p).parts))

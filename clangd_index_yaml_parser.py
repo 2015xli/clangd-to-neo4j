@@ -191,15 +191,38 @@ class SymbolParser:
         except Exception as e:
             logger.error(f"Failed to save cache to {cache_path}: {e}", exc_info=True)
 
-    def create_subset(self, symbol_ids_to_keep: set) -> 'SymbolParser':
+    def create_sufficient_subset(self, seed_symbol_ids: set) -> 'SymbolParser':
         """
-        Creates a new SymbolParser instance containing only the specified symbols
+        Creates a new SymbolParser instance containing only the specified symbols + 1-hop neighbors
         and their already-resolved data.
         """
+        logger.info(f"Subset index has {len(seed_symbol_ids)} seed symbols")
+
+        #Grow to 1-Hop Neighbors
+        logger.info("Finding 1-hop neighbors (callers and callees)...")
+        final_symbol_ids = set(seed_symbol_ids)
+
+        # Find Incoming Callers (functions that call the seed symbols)
+        for seed_id in seed_symbol_ids:
+            if seed_id in self.symbols:
+                callee_symbol = self.symbols[seed_id]
+                for ref in callee_symbol.references:
+                    if ref.container_id and ref.container_id != '0000000000000000':
+                        final_symbol_ids.add(ref.container_id)
+
+        # Find Outgoing Callees (functions called by the seed symbols)
+        for callee_symbol in self.symbols.values():
+            for ref in callee_symbol.references:
+                if ref.container_id in seed_symbol_ids:
+                    final_symbol_ids.add(callee_symbol.id)
+                    break  # Optimization: move to the next symbol once one link is found
+        
+        logger.info(f"Total symbols to keep in subset (seeds + neighbors): {len(final_symbol_ids)}")
+
         subset_parser = SymbolParser(self.index_file_path)
         
         # Copy the relevant symbols
-        for symbol_id in symbol_ids_to_keep:
+        for symbol_id in final_symbol_ids:
             if symbol_id in self.symbols:
                 subset_parser.symbols[symbol_id] = self.symbols[symbol_id]
         

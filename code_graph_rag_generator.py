@@ -17,8 +17,6 @@ from tqdm import tqdm
 
 import input_params
 from neo4j_manager import Neo4jManager
-from clangd_index_yaml_parser import SymbolParser
-from function_span_provider import FunctionSpanProvider
 from llm_client import get_llm_client, LlmClient, get_embedding_client, EmbeddingClient
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,12 +32,11 @@ class RagGenerator:
     - Single-item processing methods.
     """
 
-    def __init__(self, neo4j_mgr: Neo4jManager, project_path: str, span_provider: FunctionSpanProvider, 
+    def __init__(self, neo4j_mgr: Neo4jManager, project_path: str, 
                  llm_client: LlmClient, embedding_client: EmbeddingClient, 
                  num_local_workers: int, num_remote_workers: int):
         self.neo4j_mgr = neo4j_mgr
         self.project_path = os.path.abspath(project_path)
-        self.span_provider = span_provider
         self.llm_client = llm_client
         self.embedding_client = embedding_client
         self.num_local_workers = num_local_workers
@@ -167,12 +164,15 @@ class RagGenerator:
         """PASS 1: Generates a code-only summary for all functions in the graph."""
         logging.info("\n--- Starting Pass 1: Summarizing Functions Individually ---")
         
-        matched_ids = self.span_provider.get_matched_function_ids()
-        if not matched_ids:
-            logging.warning("Span provider found no functions to process. Exiting Pass 1.")
+        query = "MATCH (n:FUNCTION) WHERE n.body_location IS NOT NULL RETURN n.id AS id"
+        results = self.neo4j_mgr.execute_read_query(query)
+        all_function_ids = [r['id'] for r in results]
+
+        if not all_function_ids:
+            logging.warning("No functions with body_location found in graph. Exiting Pass 1.")
             return
         
-        self._summarize_functions_individually_with_ids(matched_ids)
+        self._summarize_functions_individually_with_ids(all_function_ids)
         logging.info("--- Finished Pass 1 ---")
 
     def _summarize_functions_individually_with_ids(self, function_ids: list[str]) -> set:
@@ -203,8 +203,8 @@ class RagGenerator:
     def _get_functions_for_code_summary(self, function_ids: list[str]) -> list[dict]:
         query = """
         MATCH (n:FUNCTION)
-        WHERE n.id IN $function_ids AND n.codeSummary IS NULL AND n.has_definition
-        RETURN n.id AS id, n.path AS path, n.location as location
+        WHERE n.id IN $function_ids AND n.codeSummary IS NULL AND n.body_location IS NOT NULL
+        RETURN n.id AS id, n.path AS path, n.body_location as body_location
         """
         return self.neo4j_mgr.execute_read_query(query, {"function_ids": function_ids})
 
@@ -214,15 +214,22 @@ class RagGenerator:
         Returns the function ID if a summary was successfully generated, otherwise None.
         """
         func_id = func['id']
-        body_span = self.span_provider.get_body_span(func_id)
-        if not body_span: return None
-        source_code = self._get_source_code_from_span(body_span)
-        if not source_code: return None
-        #logger.info(f"Summarize function {source_code}...")
+        body_location = func.get('body_location') # This is an array [start_line, start_col, end_line, end_col]
+        file_path = func.get('path')
+
+        if not body_location or not isinstance(body_location, list) or len(body_location) != 4 or not file_path:
+            logging.warning(f"Invalid or missing body_location/path for function {func_id}. Skipping.")
+            return None
+        
+        start_line, _, end_line, _ = body_location
+        source_code = self._get_source_code_for_location(file_path, start_line, end_line)
+        if not source_code:
+            return None
 
         prompt = f"Summarize the purpose of this C function based on its code:\n\n```c\n{source_code}```"
         summary = self.llm_client.generate_summary(prompt)
-        if not summary: return None
+        if not summary:
+            return None
 
         update_query = "MATCH (n:FUNCTION {id: $id}) SET n.codeSummary = $summary"
         self.neo4j_mgr.execute_autocommit_query(update_query, {"id": func_id, "summary": summary})
@@ -496,10 +503,9 @@ class RagGenerator:
     
 
     # --- Utility Methods ---
-    def _get_source_code_from_span(self, span: dict) -> str:
-        full_path = span['file_path']
-        start_line = span['start_line']
-        end_line = span['end_line']
+    def _get_source_code_for_location(self, file_path: str, start_line: int, end_line: int) -> str:
+        # The file_path from the node is relative, construct the absolute path
+        full_path = os.path.join(self.project_path, file_path)
 
         if not os.path.exists(full_path):
             logging.warning(f"File not found when trying to extract source: {full_path}")
@@ -508,6 +514,7 @@ class RagGenerator:
         try:
             with open(full_path, 'r', errors='ignore') as f:
                 lines = f.readlines()
+            # Adjust for 0-based line numbers
             code_lines = lines[start_line : end_line + 1]
             return "".join(code_lines)
         except Exception as e:
@@ -530,30 +537,24 @@ def main():
     args = parser.parse_args()
 
     # Resolve paths and convert back to strings
-    args.index_file = str(args.index_file.resolve())
+    # project_path is needed, but index_file is not directly used by the generator anymore
     args.project_path = str(args.project_path.resolve())
 
     try:
-        # Use the standardized 'llm_api' argument name
         llm_client = get_llm_client(args.llm_api)
         embedding_client = get_embedding_client(args.llm_api)
 
         with Neo4jManager() as neo4j_mgr:
             if not neo4j_mgr.check_connection(): return 1
 
-            # Verify that the project path in the graph matches the one provided
             if not neo4j_mgr.verify_project_path(args.project_path):
                 return 1
             
-            logger.info("Parsing YAML index or loading from cache...")
-            symbol_parser = SymbolParser(index_file_path=args.index_file)
-            symbol_parser.parse(num_workers=args.num_parse_workers)
-
-            span_provider = FunctionSpanProvider(symbol_parser, [args.project_path])
+            # The standalone generator now assumes the graph has been built
+            # with body_location properties. It works directly on the graph.
             generator = RagGenerator(
                 neo4j_mgr, 
                 args.project_path, 
-                span_provider, 
                 llm_client, 
                 embedding_client,
                 args.num_local_workers,

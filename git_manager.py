@@ -186,9 +186,25 @@ class GitManager:
         updater_categories['added'] = list(set(updater_categories['added']))
         updater_categories['modified'] = list(set(updater_categories['modified']))
         updater_categories['deleted'] = list(set(updater_categories['deleted']))
-        
+
+        del detailed_changes        
         return updater_categories
 
+
+    def get_changed_files_abs_path(self, old_commit_hash: str, new_commit_hash: str) -> dict:
+        categorized_files = self.get_categorized_changed_files(old_commit_hash, new_commit_hash)
+        
+        # Convert relative paths to absolute paths
+        changed_files_abs_path = {}
+        for category in ['added', 'modified', 'deleted']:
+            changed_files_abs_path[category] = [
+                os.path.join(self.repo_path, file_path)
+                for file_path in categorized_files[category]
+            ]        
+
+        del categorized_files
+        return changed_files_abs_path
+    
     def get_head_commit_hash(self) -> str:
         """Returns the hexsha of the current HEAD commit."""
         return self.repo.head.object.hexsha

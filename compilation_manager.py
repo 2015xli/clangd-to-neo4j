@@ -33,14 +33,13 @@ class ParserCache:
         self.source_files: Optional[list[str]] = None
 
     def _get_cache_path(self, cache_path_spec: Optional[str]) -> str:
+        base_name = os.path.basename(os.path.normpath(self.folder))
         if cache_path_spec is None:
-            base_name = os.path.basename(os.path.normpath(self.folder))
-            return f"parser_cache_{base_name}.pkl"
+            return os.path.join(self.folder, f"compilation_parser_{base_name}.pkl")
         if os.path.isdir(cache_path_spec):
-            base_name = os.path.basename(os.path.normpath(self.folder))
-            return os.path.join(cache_path_spec, f"parser_cache_{base_name}.pkl")
+            return os.path.join(cache_path_spec, f"compilation_parser_{base_name}.pkl")
         base_path, _ = os.path.splitext(cache_path_spec)
-        return base_path + ".compilation_parser.pkl"
+        return base_path + f".compilation_parser_{base_name}.pkl"
 
     def get_source_files(self) -> list[str]:
         """Scans the project folder to get all .c and .h files."""
@@ -103,6 +102,7 @@ class CompilationManager:
         self.parser_type = parser_type
         self.project_path = project_path
         self.compile_commands_path = compile_commands_path
+        self._parser: Optional[CompilationParser] = None
 
         if self.parser_type == 'clang' and not self.compile_commands_path:
             inferred_path = os.path.join(project_path, 'compile_commands.json')
@@ -112,6 +112,9 @@ class CompilationManager:
 
     def _create_parser(self) -> CompilationParser:
         """Factory method to create the appropriate parser instance."""
+        if self._parser is not None:
+            return self._parser
+
         if self.parser_type == 'clang':
             return ClangParser(self.project_path, self.compile_commands_path)
         else: # 'treesitter'
@@ -122,37 +125,37 @@ class CompilationManager:
         cache = ParserCache(folder, cache_path_spec)
         if cache.is_valid():
             function_spans, include_relations = cache.load()
-            self.parser = self._create_parser()
-            self.parser.function_spans = function_spans
-            self.parser.include_relations = include_relations
+            self._parser = self._create_parser()
+            self._parser.function_spans = function_spans
+            self._parser.include_relations = include_relations
             return self
         
         logger.info("No valid parser cache found or cache is stale. Parsing source files...")
-        self.parser = self._create_parser()
+        self._parser = self._create_parser()
         source_files = cache.get_source_files()
-        self.parser.parse(source_files)
+        self._parser.parse(source_files)
         logger.info(f"Finished parsing {len(source_files)} source files.")
-        cache.save(self.parser.get_function_spans(), self.parser.get_include_relations())
+        cache.save(self._parser.get_function_spans(), self._parser.get_include_relations())
         gc.collect()
         return
 
     def parse_files(self, file_list: List[str]):
         """Parses a specific list of files without caching and returns the populated manager itself."""
         logger.info(f"Parsing {len(file_list)} specific files (no cache)...")
-        self.parser = self._create_parser()
-        self.parser.parse(file_list)
+        self._parser = self._create_parser()
+        self._parser.parse(file_list)
         gc.collect()
         return
 
     def get_function_spans(self) -> List[Dict]:
-        if not hasattr(self, 'parser') or self.parser is None:
+        if not hasattr(self, '_parser') or self._parser is None:
             raise RuntimeError("CompilationManager has not parsed any files yet.")
-        return self.parser.get_function_spans()
+        return self._parser.get_function_spans()
 
     def get_include_relations(self) -> Set[Tuple[str, str]]:
-        if not hasattr(self, 'parser') or self.parser is None:
+        if not hasattr(self, '_parser') or self._parser is None:
             raise RuntimeError("CompilationManager has not parsed any files yet.")
-        return self.parser.get_include_relations()
+        return self._parser.get_include_relations()
 
 if __name__ == "__main__":
     import argparse
