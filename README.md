@@ -18,15 +18,18 @@ This project fills that gap. It ingests Clangd index data into a Neo4j graph dat
 ## Key Features & Design Principles
 
 *   **AI-Enriched Code Graph**: Builds a comprehensive graph of files, folders, symbols, and function calls, then enriches it with AI-generated summaries and vector embeddings for semantic understanding.
+*   **Robust Dependency Analysis**: Builds a complete `[:INCLUDES]` graph by parsing source files, enabling accurate impact analysis for header file changes.
+*   **Compiler-Accurate Parsing**: Leverages `clang` via a `compile_commands.json` file to parse source code with full semantic context, correctly handling complex macros and include paths.
 *   **Incremental Updates**: Includes a Git-aware updater script that efficiently processes only the files changed between commits, avoiding the need for a full rebuild.
-*   **Adaptive Call Graph Construction**: Intelligently adapts its strategy for building the call graph based on the version of the `clangd` index, using the `Container` field when available and falling back to a `tree-sitter`-based spatial analysis when not.
+*   **Adaptive Call Graph Construction**: Intelligently adapts its strategy for building the call graph based on the version of the `clangd` index, using the `Container` field when available and falling back to a spatial analysis when not.
 *   **High-Performance & Memory Efficient**: Designed for performance with multi-process and multi-threaded parallelism, efficient batching for database operations, and intelligent memory management to handle large codebases.
 *   **Modular & Reusable**: The core logic is encapsulated in modular classes and helper scripts, promoting code reuse and maintainability.
-*   **Configurable Ingestion**: Provides multiple strategies for data ingestion, allowing users to choose between speed and safety based on their needs.
 
 ## Primary Usage
 
 The two main entry points for the pipeline are the builder and the updater.
+
+**Note**: All scripts now rely on a `compile_commands.json` file for accurate source code analysis. The examples below assume this file is located in the root of your project path. If it is located elsewhere, you must specify its location with the `--compile-commands` option (see Common Options).
 
 For all the scripts that can run standalone, you can always use --help to see the full CLI options.
 
@@ -58,6 +61,8 @@ python3 clangd_graph_rag_updater.py /path/to/new/index.yaml /path/to/project/ --
 
 Both the builder and updater accept a wide range of common arguments, which are centralized in `input_params.py`. These include:
 
+*   **Compilation Arguments**:
+    *   `--compile-commands`: Path to the `compile_commands.json` file. This file is essential for the new accurate parsing engine. By default, the tool searches for `compile_commands.json` in the project's root directory.
 *   **RAG Arguments**: Control summary and embedding generation (e.g., `--generate-summary`, `--llm-api`).
 *   **Worker Arguments**: Configure parallelism (e.g., `--num-parse-workers`, `--num-remote-workers`).
 *   **Batching Arguments**: Tune performance for database ingestion (e.g., `--ingest-batch-size`, `--cypher-tx-size`).
@@ -79,7 +84,7 @@ These scripts are the core components of the pipeline and can also be run standa
     *   **Assumption**: Symbol nodes (such as `:FILE`, `:FUNCTION`) must already exist in the database.
     *   **Usage**: `python3 clangd_call_graph_builder.py <index.yaml> <project_path/> --ingest`
 
-*   **`code_graph_rag_generator.py`**: 
+*   **`code_graph_rag_generator.py`**:
     *   **Purpose**: Runs the RAG enrichment process on an *existing* graph.
     *   **Assumption**: The structural graph (files, symbols, calls) must already be populated in the database.
     *   **Usage**: `python3 code_graph_rag_generator.py <index.yaml> <project_path/> --llm-api fake`

@@ -5,6 +5,7 @@ import argparse
 import json
 from typing import List, Dict, Tuple, Optional, Any
 from collections import defaultdict
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ class Neo4jManager:
         if not relations:
             return
 
-        logger.info(f"Ingesting {len(relations)} :INCLUDES relationships...")
+        logger.info(f"Ingesting {len(relations)} :INCLUDES relationships in batches of {batch_size}...")
         query = """
         UNWIND $batch as relation
         MATCH (including:FILE {path: relation.including_path})
@@ -196,13 +197,10 @@ class Neo4jManager:
         """
 
         total_created = 0
-        for i in range(0, len(relations), batch_size):
+        for i in tqdm(range(0, len(relations), batch_size), desc="Ingesting INCLUDES relationships"):
             batch = relations[i:i + batch_size]
             summary = self.execute_autocommit_query(query, {"batch": batch})
-            created_in_batch = summary.relationships_created
-            total_created += created_in_batch
-            if created_in_batch > 0:
-                logger.info(f"  ...ingested {i + len(batch)}/{len(relations)} relationships (newly created in batch: {created_in_batch}).")
+            total_created += summary.relationships_created
 
         logger.info(f"Finished ingesting :INCLUDES relationships. Total new relationships: {total_created}.")
 

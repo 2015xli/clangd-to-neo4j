@@ -6,60 +6,59 @@ This script is the **main orchestrator** for the entire code graph ingestion and
 
 It is designed to be run from the command line and provides numerous options for performance tuning and for controlling optional stages like RAG data generation.
 
-## 2. Execution Flow: The Multi-Pass Pipeline
+## 2. Execution Flow: The Refactored Multi-Pass Pipeline
 
-The script executes a strict, sequential pipeline. Each pass relies on the successful completion of the previous ones. The pipeline was refactored to be more robust, especially in how it discovers and handles file paths.
+The script executes a strict, sequential pipeline. The architecture has been significantly refactored to be more robust, modular, and memory-efficient.
 
-### Pass 0: Parse Clangd Index
+### Pre-Database Passes
 
-*   **Component**: `clangd_index_yaml_parser.SymbolParser`
-*   **Purpose**: To parse the massive `clangd` index YAML file into an in-memory collection of `Symbol` objects. This provides the first source of file paths (from symbol locations).
-*   **Subtlety**: This pass is heavily optimized, using multi-processing and a `.pkl` cache to skip parsing entirely on subsequent runs.
+These passes prepare all data in memory before connecting to the database.
 
-### Pass 3: Parse Source Code (Renumbered)
+*   **Pass 0: Parse Clangd Index**
+    *   **Component**: `clangd_index_yaml_parser.SymbolParser`
+    *   **Purpose**: To parse the massive `clangd` index YAML file into an in-memory collection of `Symbol` objects. This provides the first source of file paths (from symbol locations).
 
-*   **Component**: `compilation_manager.CompilationManager`
-*   **Purpose**: To parse the entire project's source code using the chosen strategy (`clang` or `treesitter`). This provides the second source of file paths (from `#include` directives) and extracts function spans. This pass runs *before* any database ingestion.
+*   **Pass 1: Parse Source Code**
+    *   **Component**: `compilation_manager.CompilationManager`
+    *   **Purpose**: To parse the entire project's source code. This provides two critical pieces of data: the complete set of `#include` relationships and the precise body locations (spans) of every function.
 
-### Database Initialization
+*   **Pass 2: Enrich Symbols with Spans**
+    *   **Component**: `function_span_provider.FunctionSpanProvider`
+    *   **Purpose**: This class acts as an "enricher." It takes the symbols from Pass 0 and the span data from Pass 1, matches them, and attaches a `body_location` attribute directly to each in-memory `Symbol` object corresponding to a function.
 
-*   **Component**: `neo4j_manager.Neo4jManager`
-*   **Purpose**: Prepares the database by resetting it, creating the top-level `:PROJECT` node (stamped with the current Git commit hash), and creating all necessary constraints and indexes.
+### Database Passes
 
-### Pass 1: Ingest File & Folder Structure
+With all data prepared, the orchestrator now connects to Neo4j and builds the graph.
 
-*   **Component**: `clangd_symbol_nodes_builder.PathProcessor`
-*   **Purpose**: To create the physical file system hierarchy in the graph.
-*   **Design Subtlety**: This pass has been updated to be more robust. It now receives a consolidated list of file paths discovered from **both** the symbol locations (Pass 0) and the include relationships (Pass 3). This ensures that even "invisible headers" (headers with no symbol definitions) are created as `:FILE` nodes, which is critical for the correctness of the include graph.
+*   **Database Initialization**: The database is completely reset, and constraints and indexes are created for performance.
 
-### Pass 2: Ingest Symbol Definitions
+*   **Pass 3: Ingest File Hierarchy**
+    *   **Component**: `clangd_symbol_nodes_builder.PathProcessor`
+    *   **Purpose**: To create all `:FILE` and `:FOLDER` nodes and their `[:CONTAINS]` relationships.
+    *   **Design Subtlety**: This pass is now highly robust. It receives data from both the symbol parser and the compilation manager, consolidating a master list of every file path that must exist. This ensures that even "invisible headers" (headers with no symbol definitions) are correctly created as nodes in the graph.
 
-*   **Component**: `clangd_symbol_nodes_builder.SymbolProcessor`
-*   **Purpose**: To create the logical code symbols (`:FUNCTION`, `:DATA_STRUCTURE`) and link them to the files they are defined in via `:DEFINES` relationships.
+*   **Pass 4: Ingest Symbol Definitions**
+    *   **Component**: `clangd_symbol_nodes_builder.SymbolProcessor`
+    *   **Purpose**: To create the `:FUNCTION` and `:DATA_STRUCTURE` nodes.
+    *   **Key Feature**: This pass reads the `body_location` attribute that was attached to the `Symbol` objects in Pass 2 and stores it as a property directly on each `:FUNCTION` node in the database.
 
-### Pass 4: Ingest Include Relations (New)
+*   **Pass 5: Ingest Include Relations**
+    *   **Component**: `include_relation_provider.IncludeRelationProvider`
+    *   **Purpose**: To create all `(:FILE)-[:INCLUDES]->(:FILE)` relationships. Because Pass 3 guarantees all file nodes already exist, this can be done safely and efficiently.
 
-*   **Component**: `include_relation_provider.IncludeRelationProvider`
-*   **Purpose**: To ingest all `(:FILE)-[:INCLUDES]->(:FILE)` relationships.
-*   **Design Subtlety**: Because Pass 1 now guarantees all file nodes exist, this pass can safely use an efficient `MATCH`-based query to create the relationships. It uses the `IncludeRelationProvider` to handle the translation between the absolute paths from the parser and the relative paths stored in the graph.
+*   **Pass 6: Ingest Call Graph**
+    *   **Component**: `clangd_call_graph_builder.ClangdCallGraphExtractor`
+    *   **Purpose**: To create all function `[:CALLS]` relationships.
 
-### Pass 5: Ingest Call Graph
+*   **Pass 7: RAG Data Generation (Optional)**
+    *   **Component**: `code_graph_rag_generator.RagGenerator`
+    *   **Purpose**: To enrich the graph with AI-generated summaries and embeddings.
+    *   **Key Feature**: This component has been simplified. It no longer needs a separate provider for location data. It now queries `:FUNCTION` nodes directly for their `body_location` property to retrieve the source code needed for summarization.
 
-*   **Component**: `clangd_call_graph_builder.ClangdCallGraphExtractor`
-*   **Purpose**: To identify and ingest all function call relationships (`-[:CALLS]->`).
-*   **Design Subtlety**: If the legacy (no `Container`) `clangd` format is detected, this pass uses the `CompilationManager` (via a `FunctionSpanProvider` adapter) to get the function span data it needs for its spatial analysis.
-
-### Pass 6: Cleanup Orphan Nodes
-
-*   **Component**: `neo4j_manager.Neo4jManager.cleanup_orphan_nodes`
-*   **Purpose**: To ensure a clean graph by removing any nodes that were created but ended up without any relationships.
-
-### Pass 7: RAG Data Generation (Optional)
-
-*   **Component**: `code_graph_rag_generator.RagGenerator`
-*   **Purpose**: To enrich the structural graph with AI-generated summaries and vector embeddings.
-*   **Efficiency Subtlety**: This pass also uses the `CompilationManager` (via the `FunctionSpanProvider` adapter) to get the source code for each function.
+*   **Pass 8: Cleanup Orphan Nodes**
+    *   **Component**: `neo4j_manager.Neo4jManager`
+    *   **Purpose**: An optional final pass to remove any nodes that were created but ended up with no relationships.
 
 ## 3. Memory Management
 
-The orchestrator is designed to be memory-conscious. After each major pass that loads significant data into memory (e.g., `PathProcessor`, `SymbolProcessor`), the script explicitly deletes the processor object and calls Python's garbage collector (`gc.collect()`) to free up memory before proceeding to the next pass. The large `SymbolParser` object is also deleted before the memory-intensive RAG pass begins.
+The orchestrator is designed to be memory-conscious. After the call graph is built in Pass 6, the large `SymbolParser` object is no longer needed by any subsequent pass. The script explicitly deletes it and invokes the garbage collector to free up gigabytes of memory before the potentially memory-intensive RAG generation pass begins.

@@ -116,34 +116,36 @@ class CompilationManager:
             return self._parser
 
         if self.parser_type == 'clang':
-            return ClangParser(self.project_path, self.compile_commands_path)
+            self._parser = ClangParser(self.project_path, self.compile_commands_path)
         else: # 'treesitter'
-            return TreesitterParser(self.project_path)
+            self._parser = TreesitterParser(self.project_path)
 
-    def parse_folder(self, folder: str, cache_path_spec: Optional[str] = None):
+        return self._parser
+
+    def parse_folder(self, folder: str, num_workers: int = 1, cache_path_spec: Optional[str] = None):
         """Parses a full folder, using a cache if possible, and returns the populated manager itself."""
         cache = ParserCache(folder, cache_path_spec)
         if cache.is_valid():
             function_spans, include_relations = cache.load()
-            self._parser = self._create_parser()
-            self._parser.function_spans = function_spans
-            self._parser.include_relations = include_relations
-            return self
+            parser = self._create_parser()
+            parser.function_spans = function_spans
+            parser.include_relations = include_relations
+            return
         
         logger.info("No valid parser cache found or cache is stale. Parsing source files...")
-        self._parser = self._create_parser()
+        parser = self._create_parser()
         source_files = cache.get_source_files()
-        self._parser.parse(source_files)
+        parser.parse(source_files, num_workers)
         logger.info(f"Finished parsing {len(source_files)} source files.")
-        cache.save(self._parser.get_function_spans(), self._parser.get_include_relations())
+        cache.save(parser.get_function_spans(), parser.get_include_relations())
         gc.collect()
         return
 
-    def parse_files(self, file_list: List[str]):
+    def parse_files(self, file_list: List[str], num_workers: int = 1):
         """Parses a specific list of files without caching and returns the populated manager itself."""
         logger.info(f"Parsing {len(file_list)} specific files (no cache)...")
-        self._parser = self._create_parser()
-        self._parser.parse(file_list)
+        parser = self._create_parser()
+        parser.parse(file_list, num_workers)
         gc.collect()
         return
 
@@ -258,7 +260,7 @@ if __name__ == "__main__":
             grouped_includes[key].sort()
 
         results = {
-            'function_spans': parser_instance.get_function_spans(),
+            'function_spans': manager.get_function_spans(),
             'grouped_include_relations': dict(sorted(grouped_includes.items()))
         }
 

@@ -49,8 +49,8 @@ class GraphBuilder:
         """Runs the entire graph building pipeline."""
         try:
             # --- Pre-Database Passes ---
-            self._pass_0_parse_symbols()
             self._pass_1_parse_sources()
+            self._pass_0_parse_symbols()
             self._pass_2_enrich_symbols()
 
             # --- Database Passes ---
@@ -94,7 +94,7 @@ class GraphBuilder:
             project_path=self.args.project_path,
             compile_commands_path=self.args.compile_commands
         )
-        self.compilation_manager.parse_folder(self.args.project_path)
+        self.compilation_manager.parse_folder(self.args.project_path, self.args.num_parse_workers)
         logger.info("--- Finished Pass 1 ---")
 
     def _pass_2_enrich_symbols(self):
@@ -162,9 +162,10 @@ class GraphBuilder:
             logger.info("Using ClangdCallGraphExtractorWithContainer (new format detected).")
         else:
             logger.info("Using ClangdCallGraphExtractorWithoutContainer (old format detected).")
-            from function_span_provider import FunctionSpanProvider
-            span_provider = FunctionSpanProvider(self.symbol_parser, self.compilation_manager)
-            extractor = ClangdCallGraphExtractorWithoutContainer(self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size, span_provider)
+            # The symbol_parser object has already been enriched with body_location data in Pass 2.
+            # The extractor will read this data directly from the symbol objects.
+            extractor = ClangdCallGraphExtractorWithoutContainer(
+                self.symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         
         call_relations = extractor.extract_call_relationships()
         extractor.ingest_call_relations(call_relations, neo4j_mgr=neo4j_mgr)

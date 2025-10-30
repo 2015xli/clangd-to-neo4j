@@ -10,6 +10,7 @@ Besides the given command line usages below, you can always use --help to see th
 - [`unique_yaml_lines_with_markers.py`](#unique_yaml_lines_with_markerspy)
 - [`c_ast_to_dot.py`](#c_ast_to_dotpy)
 - [`check_if_c_header.py`](#check_if_c_headerpy)
+- [`find_impacted_sources.py`](#find_impacted_sourcespy)
 
 ---
 
@@ -96,4 +97,29 @@ It uses two main heuristics:
 
 ```sh
 python check_if_c_header.py <path_to_header.h>
+```
+
+---
+
+## `find_impacted_sources.py`
+
+This script is a powerful dependency analysis tool that finds all source files (`.c`, `.cpp`, etc.) that are transitively impacted by a change in a given header file. It was originally created to debug and prototype the dependency analysis logic that is now integrated into the main `GraphUpdater` pipeline.
+
+It provides a compiler-accurate analysis by leveraging `clang`'s parsing engine.
+
+### How It Works
+
+1.  It parses every source file specified in the `compile_commands.json` database using `clang.cindex`.
+2.  As it parses, it extracts all `#include` directives for each translation unit.
+3.  It uses this data to build a complete, in-memory **reverse include graph** (mapping included headers to the files that include them).
+4.  Finally, it performs a traversal backwards from the user-specified header to find every source file that depends on it, directly or indirectly.
+
+### Prerequisites
+
+-   `clang` must be installed and available in the system's `PATH`.
+-   A `compile_commands.json` file for the project must be available.
+
+### Usage
+```sh
+python tools/find_impacted_sources.py <path_to_compile_commands.json> <path_to_changed_header.h>
 ```

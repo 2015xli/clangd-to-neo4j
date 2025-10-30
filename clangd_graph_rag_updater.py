@@ -68,7 +68,12 @@ class GraphUpdater:
 
             logger.info(f"Found {len(dirty_files)} files to re-ingest and {len(git_changes['deleted'])} files to delete.")
 
-            self._purge_stale_graph_data(dirty_files, git_changes['deleted'])
+            # Convert paths to relative for purge operations
+            dirty_files_rel = {os.path.relpath(f, self.project_path) for f in dirty_files}
+            deleted_files_rel = [os.path.relpath(f, self.project_path) for f in git_changes['deleted']]
+            self._purge_stale_graph_data(dirty_files_rel, deleted_files_rel)
+
+            # The rebuild scope method still works with absolute paths
             self._rebuild_dirty_scope(git_changes, impacted_from_graph)
 
             self.neo4j_mgr.update_project_node(self.project_path, {'commit_hash': new_commit})
@@ -106,20 +111,18 @@ class GraphUpdater:
         impacted_files = include_provider.get_impacted_files_from_graph(headers_to_check)
         return impacted_files
 
-    def _purge_stale_graph_data(self, dirty_files: Set[str], deleted_files: List[str]):
+    def _purge_stale_graph_data(self, dirty_files_rel: Set[str], deleted_files_rel: List[str]):
         logger.info("\n--- Phase 3: Purging Stale Graph Data ---")
-        files_to_purge_symbols_from = list(dirty_files | set(deleted_files))
-        # for graph operations, we need relative paths
-        files_to_purge_symbols_from = [os.path.relpath(f, self.project_path) for f in files_to_purge_symbols_from]
+        files_to_purge_symbols_from = list(dirty_files_rel | set(deleted_files_rel))
 
         if files_to_purge_symbols_from:
             logger.info(f"Purging symbols and includes from {len(files_to_purge_symbols_from)} files.")
             self.neo4j_mgr.purge_symbols_defined_in_files(files_to_purge_symbols_from)
             self.neo4j_mgr.purge_include_relations_from_files(files_to_purge_symbols_from)
 
-        if deleted_files:
-            logger.info(f"Deleting {len(deleted_files)} FILE nodes.")
-            self.neo4j_mgr.purge_files(deleted_files)
+        if deleted_files_rel:
+            logger.info(f"Deleting {len(deleted_files_rel)} FILE nodes.")
+            self.neo4j_mgr.purge_files(deleted_files_rel)
 
     def _rebuild_dirty_scope(self, git_changes: Dict[str, List[str]], impacted_from_graph: Set[str]):
         dirty_files = set(git_changes['added'] + git_changes['modified']) | impacted_from_graph
@@ -138,7 +141,7 @@ class GraphUpdater:
             project_path=self.project_path,
             compile_commands_path=self.args.compile_commands
         )
-        comp_manager.parse_files(list(dirty_files))
+        comp_manager.parse_files(list(dirty_files), self.args.num_parse_workers)
 
         # 3. Create "mini" symbol parser for the dirty scope
         dirty_file_uris = {f"file://{os.path.abspath(f)}" for f in dirty_files}
@@ -169,7 +172,7 @@ class GraphUpdater:
         if mini_symbol_parser.has_container_field:
             extractor = ClangdCallGraphExtractorWithContainer(mini_symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         else:
-            extractor = ClangdCallGraphExtractorWithoutContainer(mini_symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size, span_provider)
+            extractor = ClangdCallGraphExtractorWithoutContainer(mini_symbol_parser, self.args.log_batch_size, self.args.ingest_batch_size)
         call_relations = extractor.extract_call_relationships()
         extractor.ingest_call_relations(call_relations, neo4j_mgr=self.neo4j_mgr)
 
